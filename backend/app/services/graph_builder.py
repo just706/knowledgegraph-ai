@@ -18,14 +18,15 @@ from app.services.graph_extractor import GraphData, extract_graph
 MANUAL_RELATION_TYPES = ["属于", "包含", "相关", "对比", "因果", "举例", "用于", "其他"]
 
 
-def build_graph(db: Session, user_id: int, chunks: Iterable[str]) -> GraphData:
+def build_graph(db: Session, user_id: int, chunks: Iterable[str], user=None) -> GraphData:
     """抽取并落库用户图谱；返回本次构建的图数据。
 
     采用"合并"策略：已存在同名实体则累加 mention_count；
     已存在相同三元组则累加 weight，避免重复构建时数据膨胀。
     仅处理 source='auto' 的关系，用户手动标注(manual)的关系始终保留。
+    user 用于解析其 LLM 凭证（图谱语义抽取按其自有 key 计费）。
     """
-    data = extract_graph(chunks)
+    data = extract_graph(chunks, user=user)
     if not data.entities:
         return data
 

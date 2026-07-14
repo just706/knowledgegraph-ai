@@ -10,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
+from app.config import settings
 from app.models.document import Document, DocumentChunk
 from app.schemas.document import DocumentDetail, DocumentPublic
 from app.services.graph_builder import build_graph
 from app.services.parser import (
+    IMAGE_TYPES,
     SUPPORTED_TYPES,
     extract_text,
     normalize_file_type,
@@ -44,6 +46,14 @@ def upload_document(
         raise HTTPException(
             status_code=415,
             detail=f"不支持的文件类型，仅支持：{', '.join(sorted(SUPPORTED_TYPES))}",
+        )
+
+    # 图片/扫描件需要 OCR：若环境未启用 OCR，直接拒绝并提示
+    if file_type in IMAGE_TYPES and not settings.OCR_ENABLED:
+        raise HTTPException(
+            status_code=415,
+            detail="当前环境未启用 OCR，无法识别图片资料。请使用 TXT / Markdown / PDF / Word 等文本类资料，"
+            "或在服务器安装 Tesseract 引擎后开启 OCR_ENABLED。",
         )
 
     try:
@@ -91,7 +101,7 @@ def upload_document(
             ).all()
         ]
         if all_chunks:
-            build_graph(db, current_user.id, all_chunks)
+            build_graph(db, current_user.id, all_chunks, user=current_user)
     except Exception:  # noqa: BLE001 图谱构建异常不应阻塞文档上传
         db.rollback()
 

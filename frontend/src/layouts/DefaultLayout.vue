@@ -11,10 +11,13 @@ const activeMenu = computed(() => route.path)
 const menus = [
   { path: '/', title: '首页' },
   { path: '/knowledge', title: '知识库' },
-  { path: '/chat', title: 'AI 问答' },
+  { path: '/chat', title: 'AI 助手' },
   { path: '/graph', title: '知识图谱' },
   { path: '/mindmap', title: '思维导图' },
+  { path: '/quiz', title: '练习' },
   { path: '/mistakes', title: '错题本' },
+  { path: '/center', title: '学习中心' },
+  { path: '/settings', title: 'API 设置' },
 ]
 
 onMounted(async () => {
@@ -48,6 +51,7 @@ function handleLogout() {
         <span>{{ route.meta.title || '知识学习助手' }}</span>
         <div v-if="auth.user" class="layout__user">
           <span class="layout__email">{{ auth.user.email }}</span>
+          <el-button text type="primary" @click="router.push('/settings')">API 设置</el-button>
           <el-button text type="primary" @click="handleLogout">退出</el-button>
         </div>
       </el-header>

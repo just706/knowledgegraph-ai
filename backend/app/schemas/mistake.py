@@ -40,3 +40,9 @@ class MistakeOut(BaseModel):
 class MistakeExplainResponse(BaseModel):
     explanation: str          # AI 生成的错题解析
     mode: str                 # llm / local
+
+
+class WeaknessAnalysisResponse(BaseModel):
+    analysis: str             # AI 生成的薄弱点分析 + 推荐学习路径
+    mode: str                 # llm / local
+    weak_subjects: list[str]  # 高频薄弱主题（本地模式也会给出）

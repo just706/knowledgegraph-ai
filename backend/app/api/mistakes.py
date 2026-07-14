@@ -12,6 +12,7 @@ from app.schemas.mistake import (
     MistakeExplainResponse,
     MistakeOut,
     MistakeUpdate,
+    WeaknessAnalysisResponse,
 )
 from app.services import mistake_service as svc
 
@@ -90,6 +91,12 @@ def explain_mistake(
 ) -> dict:
     """生成该错题的 AI 诊断解析（无 key 时降级为本地模板）。"""
     try:
-        return svc.explain_mistake(db, current_user.id, mistake_id)
+        return svc.explain_mistake(db, current_user.id, mistake_id, user=current_user)
     except LookupError:
         raise HTTPException(status_code=404, detail="错题不存在")
+
+
+@router.post("/analyze-weakness", response_model=WeaknessAnalysisResponse)
+def analyze_weakness(db: DbSession = None, current_user: CurrentUser = None) -> dict:
+    """分析当前用户全部错题，给出薄弱点与推荐学习路径（无 key 时降级本地）。"""
+    return svc.analyze_weakness(db, current_user.id, user=current_user)

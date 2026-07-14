@@ -38,13 +38,15 @@ def answer(
     user_id: int,
     query: str,
     top_k: int = 5,
+    mode: str = "normal",
+    user=None,
 ) -> dict:
-    """执行 RAG 问答，返回 {answer, sources}。"""
+    """执行 RAG 问答，返回 {answer, sources}。user 用于解析其 LLM 凭证。"""
     ensure_embeddings(db, user_id)
     hits = retrieve(db, user_id, query, top_k=top_k)
 
     chunks = [c for c, _ in hits]
-    answer_text = generate_answer(query, chunks)
+    answer_text, gen_mode = generate_answer(query, chunks, mode=mode, user=user)
 
     sources = [
         {
@@ -55,7 +57,7 @@ def answer(
         }
         for c, score in hits
     ]
-    return {"answer": answer_text, "sources": sources}
+    return {"answer": answer_text, "sources": sources, "mode": gen_mode}
 
 
 def list_user_documents(db: Session, user_id: int) -> list[Document]:

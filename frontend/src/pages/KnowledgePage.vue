@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   uploadDocument,
@@ -9,6 +10,8 @@ import {
   type DocumentItem,
   type DocumentDetail,
 } from '@/api/document'
+
+const router = useRouter()
 
 const documents = ref<DocumentItem[]>([])
 const loading = ref(false)
@@ -66,6 +69,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+function goPractice(item: DocumentItem) {
+  router.push({ name: 'quiz', query: { subject: item.title } })
+}
+
 onMounted(fetchDocuments)
 </script>
 
@@ -104,9 +111,10 @@ onMounted(fetchDocuments)
       <el-table-column label="上传时间" min-width="170">
         <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">查看</el-button>
+          <el-button link type="success" @click="goPractice(row)">进入练习</el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>

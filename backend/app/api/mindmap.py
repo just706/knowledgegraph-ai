@@ -18,5 +18,5 @@ def read_mindmap(
     current_user: CurrentUser = None,
 ) -> MindmapResponse:
     """返回当前用户的思维导图（由知识图谱投影生成）。"""
-    data = get_mindmap(db, current_user.id)
+    data = get_mindmap(db, current_user.id, user=current_user)
     return MindmapResponse(**data)

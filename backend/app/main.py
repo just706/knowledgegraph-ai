@@ -13,6 +13,7 @@ from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.mindmap import router as mindmap_router
 from app.api.mistakes import router as mistakes_router
+from app.api.quiz import router as quiz_router
 from app.api.stats import router as stats_router
 from app.api.users import router as users_router
 from app.config import settings
@@ -25,7 +26,26 @@ async def lifespan(_app: FastAPI):
     from app import models  # noqa: F401 确保模型被导入注册
 
     Base.metadata.create_all(bind=engine)
+    # 兼容已存在的 SQLite 库：create_all 不会给旧表追加新列，这里幂等补列。
+    # 后续正式迁移工具就绪后可移除本段。
+    _migrate_add_user_llm_columns(engine)
     yield
+
+
+def _migrate_add_user_llm_columns(engine) -> None:
+    """为 users 表补齐 llm_api_key / llm_base_url / llm_model 三列（若不存在）。"""
+    expected = {
+        "llm_api_key": "VARCHAR(512)",
+        "llm_base_url": "VARCHAR(255)",
+        "llm_model": "VARCHAR(128)",
+        "llm_provider": "VARCHAR(64)",
+    }
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(users)"))}
+        for col, col_type in expected.items():
+            if col not in existing:
+                conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+        conn.commit()
 
 
 app = FastAPI(
@@ -55,5 +75,6 @@ app.include_router(chat_router, prefix=settings.API_V1_PREFIX)
 app.include_router(graph_router, prefix=settings.API_V1_PREFIX)
 app.include_router(mindmap_router, prefix=settings.API_V1_PREFIX)
 app.include_router(mistakes_router, prefix=settings.API_V1_PREFIX)
+app.include_router(quiz_router, prefix=settings.API_V1_PREFIX)
 app.include_router(stats_router, prefix=settings.API_V1_PREFIX)
 

@@ -19,8 +19,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models.graph import Entity, Relation
+from app.services.llm_client import resolve_credential
 
 # 实体类型 → 思维导图分支名
 LABEL_BRANCHES = {
@@ -180,14 +180,13 @@ def _entity_name(db: Session, entity_id: int) -> str:
     return e.name if e else "?"
 
 
-def _llm_mindmap(db: Session, user_id: int) -> MindNode | None:
-    """LLM 增强：生成更语义化的学习路径树。无 key 或失败返回 None。"""
-    api_key = settings.OPENAI_API_KEY
-    if not api_key:
-        return None
-    try:
-        import openai  # noqa: F401
-    except ImportError:
+def _llm_mindmap(db: Session, user_id: int, user=None) -> MindNode | None:
+    """LLM 增强：生成更语义化的学习路径树。无 key 或失败返回 None。
+
+    复用统一 chat_completion 封装，自动适配 OpenAI / Anthropic / Gemini 等多厂商。
+    """
+    cred = resolve_credential(user)
+    if cred is None:
         return None
 
     entities = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
@@ -212,20 +211,19 @@ def _llm_mindmap(db: Session, user_id: int) -> MindNode | None:
         f"关系：{json.dumps(rels, ensure_ascii=False)}\n"
     )
     try:
-        from openai import OpenAI
+        from app.services.llm_client import chat_completion
 
-        client = OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
-        resp = client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        text = chat_completion(
+            user,
+            system_prompt="你是 KnowledgeGraph AI 的学习路径规划助手。",
+            user_prompt=prompt,
             temperature=0.3,
-            response_format={"type": "json_object"},
             timeout=30,
+            json_mode=True,
         )
-        text = resp.choices[0].message.content or "{}"
         data = json.loads(text)
         return _dict_to_mind(data)
-    except Exception:  # noqa: BLE001  LLM 失败降级到本地算法
+    except Exception:  # noqa: BLE001  LLM 失败降级到本地算法（原因见 llm_client 日志）
         return None
 
 
@@ -244,14 +242,14 @@ def _dict_to_mind(data: dict) -> MindNode:
     return node
 
 
-def get_mindmap(db: Session, user_id: int) -> dict:
+def get_mindmap(db: Session, user_id: int, user=None) -> dict:
     """返回当前用户的思维导图树。
 
-    优先尝试 LLM 生成；失败或无 key 时回退到本地图算法。
+    优先尝试 LLM 生成（按其自有 key 计费）；失败或无 key 时回退到本地图算法。
     同时返回生成模式（llm / local）便于前端提示。
     """
     mode = "local"
-    tree = _llm_mindmap(db, user_id)
+    tree = _llm_mindmap(db, user_id, user=user)
     if tree is None:
         tree = _local_mindmap(db, user_id)
     else:

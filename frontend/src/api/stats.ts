@@ -10,6 +10,13 @@ export interface TrendItem {
   count: number
 }
 
+export interface MasteryItem {
+  name: string
+  value: number
+  total: number
+  correct: number
+}
+
 export interface StatsOverview {
   document_count: number
   chunk_count: number
@@ -21,6 +28,15 @@ export interface StatsOverview {
   entity_label_dist: CountItem[]
   mistake_subject_dist: CountItem[]
   mistake_trend_7d: TrendItem[]
+  quiz_total: number
+  knowledge_mastery: MasteryItem[]
+  mastered_entity_count: number
+  study_hours: number
+  ability_radar: CountItem[]
+  recent_documents: { title: string; created_at: string }[]
+  recent_mistakes: { question: string; subject: string }[]
+  ai_suggestion: string
+  today_goal: string
 }
 
 export function getStatsOverview(): Promise<StatsOverview> {

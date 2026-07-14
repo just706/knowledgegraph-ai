@@ -24,11 +24,12 @@
 | Phase 1 | 项目初始化：前后端工程、环境、Git | ✅ 完成 |
 | Phase 2 | 用户系统：注册/登录/JWT/路由守卫 | ✅ 完成 |
 | Phase 3 | 知识库：上传/解析/切片/用户隔离 | ✅ 完成 |
-| Phase 4 | RAG 系统：向量化 + 检索问答 | ⏳ 待开始 |
-| Phase 5 | 知识图谱：实体/关系抽取与可视化 | ⏳ 待开始 |
-| Phase 6 | 前端展示：图谱/导图可视化 | ⏳ 待开始 |
-| Phase 7 | AI 出题：基于资料生成练习题 | ⏳ 待开始 |
-| Phase 8 | 错题系统：错题收集与针对性练习 | ⏳ 待开始 |
+| Phase 4 | RAG 系统：向量化 + 检索问答 | ✅ 完成 |
+| Phase 5 | 知识图谱：实体/关系抽取与可视化 | ✅ 完成 |
+| Phase 6 | 前端展示：图谱/导图可视化 | ✅ 完成 |
+| Phase 7 | AI 出题：基于资料生成练习题 | ✅ 完成 |
+| Phase 8 | 错题系统：错题收集与针对性练习 | ✅ 完成 |
+| 部署 | Docker / Docker Compose 一键部署 + CI 镜像构建 | ✅ 完成 |
 
 ## 目录结构
 
@@ -36,32 +37,55 @@
 .
 ├── prd.md              # 整合后的项目文档（PRD + 开发计划 + AI 宪法）
 ├── docs/               # 原始 Word 文档归档
+├── .env.example        # 生产环境变量模板（部署用）
+├── docker-compose.yml  # 一键编排前后端容器
+├── .github/workflows/  # CI：测试 + 镜像构建/推送
 ├── backend/            # FastAPI 后端
 │   ├── app/
-│   │   ├── api/        # 路由（health, users：注册/登录/me, documents：上传/列表/详情/删除）
-│   │   ├── core/       # 核心逻辑（security：密码哈希 + JWT）
-│   │   ├── models/     # SQLAlchemy ORM 模型（user / document / chunk）
+│   │   ├── api/        # 路由（health, users, documents, chat, graph, mindmap, quiz, mistakes, stats）
+│   │   ├── core/       # 核心逻辑（security：密码哈希 + JWT / crypto：Key 加密）
+│   │   ├── models/     # SQLAlchemy ORM 模型（user / document / chunk / chat / quiz / mistake / graph）
 │   │   ├── schemas/    # Pydantic 校验/响应模型
-│   │   ├── services/   # 业务服务（parser：解析 / splitter：切片）
+│   │   ├── services/   # 业务服务（parser / splitter / embedding / retriever / llm_client / rag ...）
 │   │   ├── config.py   # 环境变量配置
 │   │   ├── database.py # 引擎与会话
 │   │   └── main.py     # 应用入口（Swagger /docs）
 │   ├── tests/          # 接口测试（conftest 隔离数据库 + client fixture）
+│   ├── Dockerfile      # 后端镜像
 │   └── requirements.txt
 └── frontend/           # Vue3 前端
-    └── src/
-        ├── api/        # 接口请求
-        ├── layouts/    # 布局
-        ├── pages/      # 页面（首页/知识库/问答/图谱/导图/错题本）
-        ├── router/     # 路由
-        ├── store/      # Pinia 状态
-        ├── styles/     # 全局样式
-        └── utils/      # 工具函数
+    ├── src/
+    │   ├── api/        # 接口请求
+    │   ├── pages/      # 页面（首页/知识库/问答/图谱/导图/错题本）
+    │   ├── router/     # 路由
+    │   ├── store/      # Pinia 状态
+    │   └── ...
+    ├── Dockerfile      # 前端镜像（node 构建 → nginx 运行）
+    └── nginx.conf      # Nginx 反代 /api 到后端
 ```
 
 ## 快速开始
 
-### 后端
+### 方式一：Docker 一键部署（推荐）
+
+> 需已安装 Docker 与 Docker Compose。一条命令同时拉起前端（Nginx，:5173）与后端（:8000）。
+
+```bash
+# 1. 准备环境变量
+cp .env.example .env
+# 2. 编辑 .env，至少把 SECRET_KEY 改成随机长字符串
+
+# 3. 构建并启动
+docker compose up -d --build
+
+# 访问前端：http://localhost:5173   （API 已由 Nginx 反代到 /api/v1）
+# 后端 Swagger：http://localhost:8000/docs
+```
+
+数据持久化：SQLite 数据库与上传文件挂载在 `backend-data` 卷中，重建容器不会丢数据。
+停止：`docker compose down`；查看日志：`docker compose logs -f`。
+
+### 方式二：本地开发
 
 ```bash
 cd backend
@@ -71,8 +95,6 @@ cp .env.example .env
 python run.py                 # 启动于 http://localhost:8000，Swagger: /docs
 pytest tests/ -q              # 运行接口测试
 ```
-
-### 前端
 
 ```bash
 cd frontend
@@ -92,7 +114,8 @@ npm run dev                   # 启动于 http://localhost:5173
 | Phase 5 | 知识图谱：实体/关系抽取、Neo4j、展示 | ⏳ |
 | Phase 6 | 前端展示：知识库/问答/图谱/导图页 | ⏳ |
 | Phase 7 | AI 出题：生成题目、解析 | ⏳ |
-| Phase 8 | 错题系统：保存、分析、建议 | ⏳ |
+| Phase 8 | 错题系统：保存、分析、建议 | ✅ 完成 |
+| 部署 | Docker Compose 一键部署、CI 自动构建镜像 | ✅ 完成 |
 
 ## AI 宪法核心规则
 

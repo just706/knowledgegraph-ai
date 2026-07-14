@@ -62,7 +62,7 @@ def build_user_graph(
             detail="暂无资料可用于构建图谱，请先到「知识库」上传文档。",
         )
 
-    build_graph(db, current_user.id, chunks)
+    build_graph(db, current_user.id, chunks, user=current_user)
     graph = get_graph(db, current_user.id)
     return GraphBuildResponse(
         entity_count=graph["entity_count"],

@@ -1,0 +1,39 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: kg-ai-backend
+    env_file:
+      - ./.env
+    environment:
+      # 容器内路径：SQLite 与上传文件落到挂载卷
+      - DATABASE_URL=sqlite:////app/data/kg_ai.db
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - DEBUG=False
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # 前端通过同源 /api/v1 访问（由 nginx 反代到 backend）
+        - VITE_API_BASE_URL=/api/v1
+    container_name: kg-ai-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:

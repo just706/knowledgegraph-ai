@@ -9,6 +9,7 @@ import {
   updateMistake,
   deleteMistake,
   explainMistake,
+  analyzeWeakness,
   type MistakeItem,
   type MistakeCreate,
 } from '@/api/mistake'
@@ -39,6 +40,12 @@ const explaining = ref(false)
 const currentExplain = ref<MistakeItem | null>(null)
 const explanationText = ref('')
 const explanationMode = ref('')
+
+// 薄弱点分析抽屉
+const weaknessVisible = ref(false)
+const analyzing = ref(false)
+const weaknessText = ref('')
+const weaknessMode = ref('')
 
 const totalCount = computed(() => mistakes.value.length)
 const unmasteredCount = computed(() => mistakes.value.filter((m) => !m.mastered).length)
@@ -153,6 +160,22 @@ function askAI(item: MistakeItem) {
   router.push({ name: 'chat', query: { q } })
 }
 
+async function openWeakness() {
+  weaknessVisible.value = true
+  weaknessText.value = ''
+  analyzing.value = true
+  weaknessMode.value = ''
+  try {
+    const res = await analyzeWeakness()
+    weaknessText.value = res.analysis
+    weaknessMode.value = res.mode
+  } catch {
+    // 错误由拦截器提示
+  } finally {
+    analyzing.value = false
+  }
+}
+
 onMounted(() => {
   fetchMistakes()
   fetchSubjects()
@@ -169,6 +192,7 @@ onMounted(() => {
         </p>
       </div>
       <el-button type="primary" @click="openCreate">+ 新增错题</el-button>
+      <el-button :loading="analyzing" @click="openWeakness">AI 分析薄弱点</el-button>
     </div>
 
     <div class="mistakes__filters">
@@ -258,6 +282,16 @@ onMounted(() => {
           去 AI 问答追问
         </el-button>
       </template>
+    </el-drawer>
+
+    <!-- AI 薄弱点分析 -->
+    <el-drawer v-model="weaknessVisible" title="AI 学习薄弱点分析" size="520px">
+      <div v-if="analyzing" class="muted">AI 正在分析你的错题…</div>
+      <div v-else>
+        <el-tag v-if="weaknessMode === 'llm'" type="success" size="small">AI 语义分析</el-tag>
+        <el-tag v-else type="info" size="small">本地模式</el-tag>
+        <pre class="explain__text">{{ weaknessText }}</pre>
+      </div>
     </el-drawer>
   </div>
 </template>

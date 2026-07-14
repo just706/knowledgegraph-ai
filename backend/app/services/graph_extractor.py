@@ -22,6 +22,7 @@ from typing import Iterable
 import requests
 
 from app.config import settings
+from app.services.llm_client import chat_completion, is_llm_enabled
 
 
 @dataclass
@@ -237,31 +238,21 @@ _SCHEMA = {
 }
 
 
-def _llm_extract(chunks: Iterable[str]) -> GraphData | None:
+def _llm_extract(chunks: Iterable[str], user=None) -> GraphData | None:
     """调用 LLM 抽取；失败时返回 None 以降级。"""
-    api_key = settings.OPENAI_API_KEY
-    if not api_key:
+    if not is_llm_enabled(user):
         return None
     text = "\n".join(chunks)
     if not text.strip():
         return None
     try:
-        resp = requests.post(
-            f"{settings.OPENAI_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": settings.LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": _LLM_SYSTEM},
-                    {"role": "user", "content": text[:12000]},
-                ],
-                "response_format": _SCHEMA,
-                "temperature": 0,
-            },
+        content = chat_completion(
+            user,
+            system_prompt=_LLM_SYSTEM,
+            user_prompt=text[:12000],
+            temperature=0,
             timeout=60,
         )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         data = GraphData()
         for e in parsed.get("entities", []):
@@ -286,9 +277,9 @@ def _llm_extract(chunks: Iterable[str]) -> GraphData | None:
 # 对外接口
 # ---------------------------------------------------------------------------
 
-def extract_graph(chunks: Iterable[str]) -> GraphData:
-    """抽取图谱数据：优先 LLM，失败/无 key 时本地降级。"""
-    llm_data = _llm_extract(chunks)
+def extract_graph(chunks: Iterable[str], user=None) -> GraphData:
+    """抽取图谱数据：优先 LLM（用户自有 key），失败/无 key 时本地降级。"""
+    llm_data = _llm_extract(chunks, user=user)
     if llm_data is not None and (llm_data.entities or llm_data.relations):
         return llm_data
     return _local_extract(chunks)

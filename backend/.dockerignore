@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.git/
+.gitignore
+*.log
+*.db
+*.bak
+.env
+chroma/
+data/
+.codebuddy/

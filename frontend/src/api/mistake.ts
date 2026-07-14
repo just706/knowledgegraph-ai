@@ -36,6 +36,12 @@ export interface MistakeExplain {
   mode: string
 }
 
+export interface WeaknessAnalysis {
+  analysis: string
+  mode: string
+  weak_subjects: string[]
+}
+
 export function listMistakes(params?: {
   unmastered?: boolean
   subject?: string
@@ -61,4 +67,8 @@ export function deleteMistake(id: number): Promise<void> {
 
 export function explainMistake(id: number): Promise<MistakeExplain> {
   return request.post(`/mistakes/${id}/explain`)
+}
+
+export function analyzeWeakness(): Promise<WeaknessAnalysis> {
+  return request.post('/mistakes/analyze-weakness')
 }

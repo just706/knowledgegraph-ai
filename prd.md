@@ -86,6 +86,29 @@
 - **V2**：个性化学习计划、学习能力评估、多 Agent 协作
 - **V3**：AI 导师、视频课程理解、多模态学习、商业化平台
 
+### 1.12 部署与运维（v1.0 已实现）
+
+遵循 AI 宪法"技术选择优先级：简单 > 成熟 > 可扩展"原则，采用 **Docker Compose 单主机部署**，不引入 Kubernetes（第八章明确 MVP 阶段禁止）。
+
+| 组件 | 镜像/技术 | 说明 |
+|------|-----------|------|
+| 后端 | `backend/Dockerfile`（python:3.11-slim + uvicorn） | 监听 8000，SQLite 与上传文件挂载 `backend-data` 卷持久化 |
+| 前端 | `frontend/Dockerfile`（node:20 构建 → nginx:1.27 运行） | 监听 80，SPA 回退 + `/api/` 反代到 `backend:8000` |
+| 编排 | `docker-compose.yml` | 一键 `docker compose up -d --build` 拉起前后端，含 healthcheck |
+
+**配置外置**：所有敏感配置（`SECRET_KEY`、`OPENAI_API_KEY`、`ALLOW_GLOBAL_LLM_FALLBACK` 等）通过根目录 `.env` 注入，模板见 `.env.example`，**不再硬编码默认值**。
+
+**CI/CD**：
+- `.github/workflows/ci.yml`：每次 PR/Push 跑后端 pytest、前端 type-check + build，并构建两个 Docker 镜像校验可构建性。
+- `.github/workflows/docker-publish.yml`：main/master 推送且前后端变更时，构建镜像并推送至 GitHub Container Registry（GHCR）。
+
+**部署流程**：
+```bash
+cp .env.example .env   # 修改 SECRET_KEY 为随机长字符串
+docker compose up -d --build
+# 前端 http://localhost:5173 ，后端 Swagger http://localhost:8000/docs
+```
+
 ---
 
 ## 2. MVP 开发计划
@@ -188,6 +211,7 @@
 ### 第八章 技术决策原则
 技术选择优先级：简单方案 > 成熟方案 > 可扩展方案 > 高级方案。
 MVP 阶段禁止：微服务、Kubernetes、复杂分布式架构，除非明确业务需要。
+部署说明：允许使用 **Docker / Docker Compose 单主机部署**（见 §1.12），它属于"简单方案"而非复杂分布式；数据库当前为 SQLite（挂载卷持久化），当数据量或并发增长后可仅通过修改 `DATABASE_URL` 切换 PostgreSQL，无需改动业务代码。
 
 ### 第九章 最终目标
 本项目不是简单的 AI 聊天机器人，而是构建帮助用户建立个人知识体系、持续优化学习过程的 AI 学习操作系统。
