@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.api.users import router as users_router
 from app.config import settings
@@ -44,4 +45,5 @@ app.add_middleware(
 # 路由注册（MVP 阶段所有版本路由挂在 /api/v1 下）
 app.include_router(health_router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router, prefix=settings.API_V1_PREFIX)
+app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
 

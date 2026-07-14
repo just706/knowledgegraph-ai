@@ -3,10 +3,12 @@
 通过重建数据库引擎与建表，保证测试间相互隔离（AI 宪法第七章：测试不破坏已有功能）。
 """
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, SessionLocal, engine
+from app.main import app
 
 
 @pytest.fixture(autouse=True)
@@ -36,3 +38,10 @@ def isolated_db(tmp_path):
     db_mod.engine = orig_engine
     db_mod.SessionLocal = orig_session
     test_engine.dispose()
+
+
+@pytest.fixture
+def client(isolated_db):
+    """基于已隔离数据库的 TestClient（依赖 isolated_db 先完成引擎替换）。"""
+    with TestClient(app) as c:
+        yield c

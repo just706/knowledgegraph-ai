@@ -13,8 +13,22 @@
 | 数据库（MVP 占位） | SQLite（后续 PostgreSQL / Neo4j / Chroma） |
 | AI（后续 Phase） | LLM API + Embedding + RAG + LangChain/LangGraph |
 | 安全 | bcrypt 密码哈希 + python-jose JWT（Bearer） |
+| 文档解析 | pypdf（PDF）/ 原生读取（TXT / Markdown） |
 
 > 注：原计划的 `passlib` 因与 bcrypt 4.x 不兼容已移除，改为直接使用 `bcrypt`（依赖更少、更简单，符合 AI 宪法"简单>成熟"）。
+
+## 开发进度（与代码同步）
+
+| Phase | 范围 | 状态 |
+|-------|------|------|
+| Phase 1 | 项目初始化：前后端工程、环境、Git | ✅ 完成 |
+| Phase 2 | 用户系统：注册/登录/JWT/路由守卫 | ✅ 完成 |
+| Phase 3 | 知识库：上传/解析/切片/用户隔离 | ✅ 完成 |
+| Phase 4 | RAG 系统：向量化 + 检索问答 | ⏳ 待开始 |
+| Phase 5 | 知识图谱：实体/关系抽取与可视化 | ⏳ 待开始 |
+| Phase 6 | 前端展示：图谱/导图可视化 | ⏳ 待开始 |
+| Phase 7 | AI 出题：基于资料生成练习题 | ⏳ 待开始 |
+| Phase 8 | 错题系统：错题收集与针对性练习 | ⏳ 待开始 |
 
 ## 目录结构
 
@@ -24,14 +38,15 @@
 ├── docs/               # 原始 Word 文档归档
 ├── backend/            # FastAPI 后端
 │   ├── app/
-│   │   ├── api/        # 路由（health, users：注册/登录/me, deps：JWT 依赖）
+│   │   ├── api/        # 路由（health, users：注册/登录/me, documents：上传/列表/详情/删除）
 │   │   ├── core/       # 核心逻辑（security：密码哈希 + JWT）
-│   │   ├── models/     # SQLAlchemy ORM 模型
+│   │   ├── models/     # SQLAlchemy ORM 模型（user / document / chunk）
 │   │   ├── schemas/    # Pydantic 校验/响应模型
+│   │   ├── services/   # 业务服务（parser：解析 / splitter：切片）
 │   │   ├── config.py   # 环境变量配置
 │   │   ├── database.py # 引擎与会话
 │   │   └── main.py     # 应用入口（Swagger /docs）
-│   ├── tests/          # 接口测试（conftest 隔离数据库）
+│   ├── tests/          # 接口测试（conftest 隔离数据库 + client fixture）
 │   └── requirements.txt
 └── frontend/           # Vue3 前端
     └── src/

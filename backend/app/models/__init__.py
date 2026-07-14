@@ -1,4 +1,5 @@
 """ORM 模型包。"""
+from app.models.document import Document, DocumentChunk
 from app.models.user import User
 
-__all__ = ["User"]
+__all__ = ["User", "Document", "DocumentChunk"]
