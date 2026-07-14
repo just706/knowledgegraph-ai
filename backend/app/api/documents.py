@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import CurrentUser, DbSession
 from app.models.document import Document, DocumentChunk
 from app.schemas.document import DocumentDetail, DocumentPublic
+from app.services.graph_builder import build_graph
 from app.services.parser import (
     SUPPORTED_TYPES,
     extract_text,
@@ -80,6 +81,20 @@ def upload_document(
         )
     db.commit()
     db.refresh(doc)
+
+    # Phase 5：上传后基于全部资料自动增量构建图谱（失败不影响上传结果）
+    try:
+        all_chunks = [
+            c.content
+            for c in db.scalars(
+                select(DocumentChunk).where(DocumentChunk.user_id == current_user.id)
+            ).all()
+        ]
+        if all_chunks:
+            build_graph(db, current_user.id, all_chunks)
+    except Exception:  # noqa: BLE001 图谱构建异常不应阻塞文档上传
+        db.rollback()
+
     return doc
 
 
