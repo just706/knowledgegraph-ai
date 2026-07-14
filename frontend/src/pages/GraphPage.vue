@@ -1,15 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { DataSet } from 'vis-data'
 import { Network } from 'vis-network'
-import { getGraph, buildGraph, clearGraph, type GraphData, type GraphNode } from '@/api/graph'
+import {
+  getGraph,
+  buildGraph,
+  clearGraph,
+  getRelationTypes,
+  createRelation,
+  deleteRelation,
+  type GraphData,
+  type GraphNode,
+  type GraphEdge,
+} from '@/api/graph'
 
 const graphData = ref<GraphData | null>(null)
 const loading = ref(false)
 const building = ref(false)
 const search = ref('')
 const minWeight = ref(1)
+
+// 手动关联相关状态
+const linkMode = ref(false) // 是否处于"关联模式"
+const linkSource = ref<GraphNode | null>(null) // 已选的第一个实体
+const relationTypes = ref<string[]>([])
+const relDialogVisible = ref(false)
+const pickedRelation = ref('')
+const linking = ref(false)
 
 let network: Network | null = null
 let nodesDs: DataSet<any> | null = null
@@ -59,10 +77,17 @@ function renderGraph(data: GraphData) {
     from: e.source,
     to: e.target,
     label: e.relation,
-    title: `${e.relation} · 强度 ${e.weight}`,
+    title:
+      `${e.relation} · 强度 ${e.weight}` +
+      (e.source_type === 'manual' ? ' · 手动标注' : ''),
     width: Math.min(6, 1 + e.weight),
+    // 手动标注的关系用醒目颜色，区别于自动抽取
+    color:
+      e.source_type === 'manual'
+        ? { color: '#f56c6c', highlight: '#f56c6c' }
+        : { color: '#c0c4cc', highlight: '#409eff' },
+    dashes: e.source_type === 'manual',
     font: { size: 10, color: '#909399', strokeWidth: 0 },
-    color: { color: '#c0c4cc', highlight: '#409eff' },
     smooth: { enabled: true, type: 'continuous' },
   }))
 
@@ -84,9 +109,9 @@ function renderGraph(data: GraphData) {
     )
     network.on('click', (params: any) => {
       if (params.nodes.length) {
-        const id = params.nodes[0] as number
-        const node = graphData.value?.nodes.find((n) => n.id === id)
-        if (node) search.value = node.name
+        handleNodeClick(params.nodes[0] as number)
+      } else if (params.edges.length) {
+        handleEdgeClick(params.edges[0] as number)
       }
     })
   } else {
@@ -98,11 +123,97 @@ function renderGraph(data: GraphData) {
   network?.fit({ animation: true })
 }
 
+// 点击节点：关联模式下累计选择两个实体
+function handleNodeClick(id: number) {
+  if (!linkMode.value) {
+    const node = graphData.value?.nodes.find((n) => n.id === id)
+    if (node) search.value = node.name
+    return
+  }
+  const node = graphData.value?.nodes.find((n) => n.id === id)
+  if (!node) return
+  if (!linkSource.value) {
+    linkSource.value = node
+    ElMessage.info(`已选择起点：「${node.name}」，请再点击另一个实体作为终点`)
+    network?.selectNodes([id])
+  } else if (linkSource.value.id === node.id) {
+    ElMessage.warning('不能关联到自身')
+  } else {
+    linkTarget.value = node
+    relDialogVisible.value = true
+    network?.selectNodes([linkSource.value.id, node.id])
+  }
+}
+
+const linkTarget = ref<GraphNode | null>(null)
+
+// 点击边：删除关系
+async function handleEdgeClick(id: number) {
+  const edge = graphData.value?.edges.find((e) => e.id === id)
+  if (!edge) return
+  const srcName = graphData.value?.nodes.find((n) => n.id === edge.source)?.name || '?'
+  const tgtName = graphData.value?.nodes.find((n) => n.id === edge.target)?.name || '?'
+  try {
+    await ElMessageBox.confirm(
+      `删除关系：「${srcName}」 -[${edge.relation}]-> 「${tgtName}」？`,
+      '删除关系',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await deleteRelation(id)
+    ElMessage.success(res.message)
+    await loadGraph()
+  } catch {
+    // 拦截器已提示
+  }
+}
+
+// 切换关联模式
+function toggleLinkMode() {
+  linkMode.value = !linkMode.value
+  linkSource.value = null
+  linkTarget.value = null
+  network?.unselectAll()
+  if (linkMode.value) {
+    ElMessage.info('关联模式：依次点击两个实体即可手动建立关系')
+  }
+}
+
+// 确认创建手动关系
+async function confirmLink() {
+  if (!linkSource.value || !linkTarget.value || !pickedRelation.value) return
+  linking.value = true
+  try {
+    await createRelation({
+      source_id: linkSource.value.id,
+      target_id: linkTarget.value.id,
+      relation: pickedRelation.value,
+    })
+    ElMessage.success(
+      `已关联：「${linkSource.value.name}」 -[${pickedRelation.value}]-> 「${linkTarget.value.name}」`,
+    )
+    relDialogVisible.value = false
+    pickedRelation.value = ''
+    linkSource.value = null
+    linkTarget.value = null
+    network?.unselectAll()
+    if (linkMode.value) linkMode.value = false
+    await loadGraph()
+  } catch {
+    // 拦截器已提示
+  } finally {
+    linking.value = false
+  }
+}
+
 async function rebuild() {
   building.value = true
   try {
     const res = await buildGraph()
-    ElMessage.success(res.message)
+    ElMessage.success(res.message + '（你的手动标注已保留）')
     await loadGraph()
   } catch {
     // 拦截器已提示
@@ -113,9 +224,11 @@ async function rebuild() {
 
 async function onClear() {
   try {
-    await ElMessageBox.confirm('确定清空当前图谱？该操作不可恢复。', '清空确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      '确定清空当前图谱？自动抽取的关系与你的手动标注都将被删除。',
+      '清空确认',
+      { type: 'warning' },
+    )
   } catch {
     return
   }
@@ -153,6 +266,11 @@ const filteredNodes = computed<GraphNode[]>(() => {
 })
 
 onMounted(async () => {
+  try {
+    relationTypes.value = await getRelationTypes()
+  } catch {
+    relationTypes.value = ['属于', '包含', '相关', '对比', '因果', '举例', '用于', '其他']
+  }
   await loadGraph()
 })
 onBeforeUnmount(() => {
@@ -203,12 +321,48 @@ onBeforeUnmount(() => {
         </el-select>
       </div>
 
+      <el-button
+        :type="linkMode ? 'warning' : 'default'"
+        :plain="!linkMode"
+        @click="toggleLinkMode"
+      >
+        {{ linkMode ? '取消关联' : '手动关联' }}
+      </el-button>
+      <span v-if="linkMode && linkSource" class="link-hint">
+        起点：<b>{{ linkSource.name }}</b> → 点击终点实体
+      </span>
+
       <div class="legend">
         <span v-for="(c, k) in LABEL_COLORS" :key="k" class="legend-item">
           <i class="dot" :style="{ background: c }" />{{ k }}
         </span>
+        <span class="legend-item">
+          <i class="line-manual" />手动标注
+        </span>
       </div>
     </div>
+
+    <!-- 选择关系类型对话框 -->
+    <el-dialog v-model="relDialogVisible" title="建立关系" width="420px">
+      <p v-if="linkSource && linkTarget" class="rel-confirm">
+        <b>{{ linkSource.name }}</b>
+        <span class="arrow"> ──关系──► </span>
+        <b>{{ linkTarget.name }}</b>
+      </p>
+      <el-form label-width="80px">
+        <el-form-item label="关系类型">
+          <el-select v-model="pickedRelation" placeholder="选择关系类型" style="width: 100%">
+            <el-option v-for="t in relationTypes" :key="t" :value="t" :label="t" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="relDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!pickedRelation" :loading="linking" @click="confirmLink">
+          确认关联
+        </el-button>
+      </template>
+    </el-dialog>
 
     <div class="graph-body">
       <div v-loading="loading" ref="containerRef" class="graph-canvas" />
@@ -262,6 +416,12 @@ onBeforeUnmount(() => {
   .filter { display: flex; align-items: center; gap: 6px; color: #606266; font-size: 13px; }
   .legend { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
   .legend-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #606266; }
+  .line-manual { display: inline-block; width: 18px; height: 0; border-top: 2px dashed #f56c6c; }
+  .link-hint { font-size: 12px; color: #e6a23c; }
+}
+.rel-confirm {
+  text-align: center; font-size: 15px; color: #303133; margin: 0 0 16px;
+  .arrow { color: #909399; margin: 0 6px; }
 }
 .dot {
   display: inline-block; width: 10px; height: 10px; border-radius: 50%;

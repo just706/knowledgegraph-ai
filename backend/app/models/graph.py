@@ -60,6 +60,7 @@ class Relation(Base):
     )
     relation: Mapped[str] = mapped_column(String(32), nullable=False)  # 关系类型
     weight: Mapped[int] = mapped_column(Integer, default=1)  # 共现/抽取次数
+    source: Mapped[str] = mapped_column(String(16), default="auto")  # auto(抽取) / manual(用户标注)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     def __repr__(self) -> str:  # pragma: no cover

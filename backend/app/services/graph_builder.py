@@ -14,12 +14,16 @@ from sqlalchemy.orm import Session
 from app.models.graph import Entity, Relation
 from app.services.graph_extractor import GraphData, extract_graph
 
+# 用户可标注的关系类型
+MANUAL_RELATION_TYPES = ["属于", "包含", "相关", "对比", "因果", "举例", "用于", "其他"]
+
 
 def build_graph(db: Session, user_id: int, chunks: Iterable[str]) -> GraphData:
     """抽取并落库用户图谱；返回本次构建的图数据。
 
     采用"合并"策略：已存在同名实体则累加 mention_count；
     已存在相同三元组则累加 weight，避免重复构建时数据膨胀。
+    仅处理 source='auto' 的关系，用户手动标注(manual)的关系始终保留。
     """
     data = extract_graph(chunks)
     if not data.entities:
@@ -45,10 +49,12 @@ def build_graph(db: Session, user_id: int, chunks: Iterable[str]) -> GraphData:
             db.flush()  # 拿到 id
             name_to_entity[ent.name] = e
 
-    # 关系合并
+    # 关系合并（仅 auto 来源；manual 由用户维护）
     existing_rels = {
         (r.source_id, r.target_id, r.relation): r
-        for r in db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
+        for r in db.scalars(
+            select(Relation).where(Relation.user_id == user_id, Relation.source == "auto")
+        ).all()
     }
     for rel in data.relations:
         src = name_to_entity.get(rel.source)
@@ -65,10 +71,66 @@ def build_graph(db: Session, user_id: int, chunks: Iterable[str]) -> GraphData:
                 target_id=tgt.id,
                 relation=rel.relation,
                 weight=rel.weight,
+                source="auto",
             )
             db.add(r)
     db.commit()
     return data
+
+
+def add_manual_relation(
+    db: Session, user_id: int, source_id: int, target_id: int, relation: str
+) -> Relation:
+    """用户手动创建一条关系（标注）。返回新建/已存在的关系。
+
+    复用 auto 同三元组（若存在则升级为 manual 并保留权重），避免重复边。
+    """
+    if source_id == target_id:
+        raise ValueError("不能将实体关联到自身")
+    if relation not in MANUAL_RELATION_TYPES:
+        raise ValueError(f"不支持的关系类型：{relation}")
+
+    # 校验实体归属
+    src = db.get(Entity, source_id)
+    tgt = db.get(Entity, target_id)
+    if not src or not tgt or src.user_id != user_id or tgt.user_id != user_id:
+        raise ValueError("实体不存在或无权限")
+
+    # 查找已存在的同三元组（无论来源）
+    existing = db.scalars(
+        select(Relation).where(
+            Relation.user_id == user_id,
+            Relation.source_id == source_id,
+            Relation.target_id == target_id,
+            Relation.relation == relation,
+        )
+    ).first()
+    if existing:
+        existing.source = "manual"
+        db.commit()
+        return existing
+
+    r = Relation(
+        user_id=user_id,
+        source_id=source_id,
+        target_id=target_id,
+        relation=relation,
+        weight=1,
+        source="manual",
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+def delete_relation(db: Session, user_id: int, relation_id: int) -> None:
+    """删除一条关系（仅限当前用户）。"""
+    r = db.get(Relation, relation_id)
+    if r is None or r.user_id != user_id:
+        raise ValueError("关系不存在或无权限")
+    db.delete(r)
+    db.commit()
 
 
 def get_graph(db: Session, user_id: int, min_weight: int = 1) -> dict:
@@ -107,6 +169,7 @@ def get_graph(db: Session, user_id: int, min_weight: int = 1) -> dict:
                 "target": r.target_id,
                 "relation": r.relation,
                 "weight": r.weight,
+                "source_type": r.source,
             }
         )
         degree[r.source_id] += 1

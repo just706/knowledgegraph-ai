@@ -1,7 +1,7 @@
 """知识图谱路由（Phase 5）。
 
-提供：查询当前用户图谱、基于资料重新构建、清空图谱。
-所有操作按当前用户隔离。
+提供：查询当前用户图谱、基于资料重新构建、清空图谱、
+用户手动创建/删除关系（标注）。所有操作按当前用户隔离。
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -9,8 +9,20 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.document import Document, DocumentChunk
-from app.schemas.graph import GraphBuildResponse, GraphDataResponse
-from app.services.graph_builder import build_graph, clear_graph, get_graph
+from app.schemas.graph import (
+    GraphBuildResponse,
+    GraphDataResponse,
+    RelationCreate,
+    RelationResponse,
+)
+from app.services.graph_builder import (
+    MANUAL_RELATION_TYPES,
+    add_manual_relation,
+    build_graph,
+    clear_graph,
+    delete_relation,
+    get_graph,
+)
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -67,3 +79,46 @@ def clear_user_graph(
     """清空当前用户的图谱数据。"""
     n = clear_graph(db, current_user.id)
     return {"deleted_entities": n, "message": f"已清空 {n} 个实体。"}
+
+
+@router.get("/relation-types", response_model=list[str])
+def list_relation_types() -> list[str]:
+    """返回用户可标注的关系类型列表。"""
+    return MANUAL_RELATION_TYPES
+
+
+@router.post("/relations", response_model=RelationResponse, status_code=status.HTTP_201_CREATED)
+def create_manual_relation(
+    payload: RelationCreate,
+    db: DbSession = None,
+    current_user: CurrentUser = None,
+) -> RelationResponse:
+    """用户手动标注一条关系（实体 A -关系-> 实体 B）。"""
+    try:
+        rel = add_manual_relation(
+            db, current_user.id, payload.source_id, payload.target_id, payload.relation
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RelationResponse(
+        id=rel.id,
+        source_id=rel.source_id,
+        target_id=rel.target_id,
+        relation=rel.relation,
+        weight=rel.weight,
+        source_type=rel.source,
+    )
+
+
+@router.delete("/relations/{relation_id}", status_code=status.HTTP_200_OK)
+def remove_relation(
+    relation_id: int,
+    db: DbSession = None,
+    current_user: CurrentUser = None,
+) -> dict:
+    """删除一条关系（仅限当前用户，auto 或 manual 均可）。"""
+    try:
+        delete_relation(db, current_user.id, relation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"deleted": relation_id, "message": "关系已删除。"}

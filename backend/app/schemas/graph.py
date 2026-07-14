@@ -20,6 +20,7 @@ class GraphEdge(BaseModel):
     target: int
     relation: str
     weight: int
+    source_type: str = "auto"  # auto(抽取) / manual(用户标注)
 
 
 class GraphDataResponse(BaseModel):
@@ -33,3 +34,20 @@ class GraphBuildResponse(BaseModel):
     entity_count: int
     relation_count: int
     message: str
+
+
+class RelationCreate(BaseModel):
+    source_id: int
+    target_id: int
+    relation: str
+
+
+class RelationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_id: int
+    target_id: int
+    relation: str
+    weight: int
+    source_type: str = "manual"

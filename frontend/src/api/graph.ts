@@ -43,3 +43,22 @@ export function buildGraph(): Promise<GraphBuildResult> {
 export function clearGraph(): Promise<{ deleted_entities: number; message: string }> {
   return request.delete('/graph/clear')
 }
+
+/** 获取可标注的关系类型列表。 */
+export function getRelationTypes(): Promise<string[]> {
+  return request.get('/graph/relation-types')
+}
+
+/** 用户手动创建一条关系（实体 A -关系-> 实体 B）。 */
+export function createRelation(payload: {
+  source_id: number
+  target_id: number
+  relation: string
+}): Promise<GraphEdge> {
+  return request.post('/graph/relations', payload)
+}
+
+/** 删除一条关系。 */
+export function deleteRelation(relationId: number): Promise<{ deleted: number; message: string }> {
+  return request.delete(`/graph/relations/${relationId}`)
+}
