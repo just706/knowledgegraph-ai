@@ -15,7 +15,7 @@ export default defineConfig({
     proxy: {
       // 开发环境将 /api 代理到后端，避免跨域
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:8000',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8011',
         changeOrigin: true,
       },
     },
