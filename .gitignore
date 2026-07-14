@@ -1,0 +1,24 @@
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 环境变量（本地真实配置不入库，仅保留 .example）
+backend/.env
+frontend/.env
+
+# 数据库与运行时产物
+*.db
+chroma/
+kg_ai.db
+
+# 构建产物
+dist/
+build/
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
