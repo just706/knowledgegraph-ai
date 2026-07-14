@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { askQuestion, type ChatSource } from '@/api/chat'
+
+const route = useRoute()
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -57,6 +60,11 @@ onMounted(() => {
     role: 'assistant',
     content: '你好！我是基于你个人知识库的 AI 学习助手。\n上传资料后，直接向我说出你的问题，我会从资料中检索并回答。',
   })
+  // 思维导图等页面跳转过来时预填问题
+  const q = route.query.q
+  if (typeof q === 'string' && q.trim()) {
+    input.value = q.trim()
+  }
 })
 </script>
 

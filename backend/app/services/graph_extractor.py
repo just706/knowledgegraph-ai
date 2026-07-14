@@ -102,8 +102,12 @@ def _extract_cn_entities(text: str) -> list[str]:
                 ent = sent[i + 1 : start + len(suf)]
                 # 去掉开头的引导性动词，保留核心概念
                 ent = re.sub(r"^(依赖|基于|通过|采用|使用|进行|利用|借助|依靠|包含|包括|实现)", "", ent)
-                # 去掉结尾的修饰性动词短语
-                ent = re.sub(r"进行表示学习$", "表示学习", ent)
+                # 去掉结尾的修饰性动词短语（缓解…/用于…/处理…等造成的不完整实体）
+                ent = re.sub(r"(缓解梯度|用于.*|处理.*|进行.*|表示学习.*)$", "", ent)
+                if not ent or ent in _CN_STOP:
+                    continue
+                # 剪掉结尾的虚词后缀
+                ent = re.sub(r"(的|了|着|过|与|和|及|或|并|等|中|上|下|内|外)$", "", ent)
                 if 2 <= len(ent) <= 10 and ent not in _CN_STOP:
                     candidates.append(ent)
     return [c for c in candidates if c]
