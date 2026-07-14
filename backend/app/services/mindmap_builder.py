@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,6 +19,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.graph import Entity, Relation
 
 # 实体类型 → 思维导图分支名
@@ -182,7 +182,7 @@ def _entity_name(db: Session, entity_id: int) -> str:
 
 def _llm_mindmap(db: Session, user_id: int) -> MindNode | None:
     """LLM 增强：生成更语义化的学习路径树。无 key 或失败返回 None。"""
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = settings.OPENAI_API_KEY
     if not api_key:
         return None
     try:
@@ -214,9 +214,9 @@ def _llm_mindmap(db: Session, user_id: int) -> MindNode | None:
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
         resp = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            model=settings.LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             response_format={"type": "json_object"},
