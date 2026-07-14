@@ -43,3 +43,8 @@ class DocumentChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 文档内顺序
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_estimate: Mapped[int] = mapped_column(Integer, default=0)  # 粗略 token 估算
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON 向量（Phase 4 RAG）
+
+    @property
+    def has_embedding(self) -> bool:
+        return bool(self.embedding)
