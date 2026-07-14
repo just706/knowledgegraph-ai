@@ -12,6 +12,9 @@
 | 后端 | FastAPI + SQLAlchemy + Pydantic |
 | 数据库（MVP 占位） | SQLite（后续 PostgreSQL / Neo4j / Chroma） |
 | AI（后续 Phase） | LLM API + Embedding + RAG + LangChain/LangGraph |
+| 安全 | bcrypt 密码哈希 + python-jose JWT（Bearer） |
+
+> 注：原计划的 `passlib` 因与 bcrypt 4.x 不兼容已移除，改为直接使用 `bcrypt`（依赖更少、更简单，符合 AI 宪法"简单>成熟"）。
 
 ## 目录结构
 
@@ -21,13 +24,14 @@
 ├── docs/               # 原始 Word 文档归档
 ├── backend/            # FastAPI 后端
 │   ├── app/
-│   │   ├── api/        # 路由（health, users 占位）
+│   │   ├── api/        # 路由（health, users：注册/登录/me, deps：JWT 依赖）
+│   │   ├── core/       # 核心逻辑（security：密码哈希 + JWT）
 │   │   ├── models/     # SQLAlchemy ORM 模型
 │   │   ├── schemas/    # Pydantic 校验/响应模型
 │   │   ├── config.py   # 环境变量配置
 │   │   ├── database.py # 引擎与会话
 │   │   └── main.py     # 应用入口（Swagger /docs）
-│   ├── tests/          # 接口测试
+│   ├── tests/          # 接口测试（conftest 隔离数据库）
 │   └── requirements.txt
 └── frontend/           # Vue3 前端
     └── src/
@@ -67,7 +71,7 @@ npm run dev                   # 启动于 http://localhost:5173
 | Phase | 内容 | 状态 |
 |-------|------|------|
 | Phase 1 | 项目初始化：前后端工程、环境、Git | ✅ 完成 |
-| Phase 2 | 用户系统：注册登录、JWT、数据库设计 | ⏳ 待开始 |
+| Phase 2 | 用户系统：注册登录、JWT、数据库设计 | ✅ 完成 |
 | Phase 3 | 知识库模块：上传、PDF 解析、切片、向量存储 | ⏳ |
 | Phase 4 | RAG 系统：Embedding、检索、问答接口 | ⏳ |
 | Phase 5 | 知识图谱：实体/关系抽取、Neo4j、展示 | ⏳ |

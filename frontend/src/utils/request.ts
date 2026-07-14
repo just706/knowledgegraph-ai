@@ -1,11 +1,21 @@
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
 import { API_BASE_URL } from '@/constants/api'
+import { useAuthStore } from '@/store/auth'
 
 // 统一请求封装：异步任务必须提供状态反馈（AI 宪法第六章）
 const request: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+})
+
+// 请求拦截：自动附加 JWT
+request.interceptors.request.use((config) => {
+  const token = useAuthStore().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 request.interceptors.response.use(
