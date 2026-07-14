@@ -231,9 +231,16 @@ def _llm_mindmap(db: Session, user_id: int) -> MindNode | None:
 
 def _dict_to_mind(data: dict) -> MindNode:
     """将 LLM 返回的 dict 转为 MindNode（带防御）。"""
-    node = MindNode(name=str(data.get("name", "主题")), kind="root")
-    for child in data.get("children", []):
+    children_data = data.get("children", []) or []
+    node = MindNode(
+        name=str(data.get("name", "主题")),
+        kind="root" if not children_data else "topic",
+    )
+    for child in children_data:
         node.children.append(_dict_to_mind(child))
+    # 叶子节点标记为 leaf，便于前端区分
+    if not node.children:
+        node.kind = "leaf"
     return node
 
 
