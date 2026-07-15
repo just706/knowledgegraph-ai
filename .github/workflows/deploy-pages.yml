@@ -1,15 +1,12 @@
 name: Deploy Frontend to GitHub Pages
 
-# 仅部署前端静态站点到 GitHub Pages（后端 API 需另行部署到公网）。
-# 前端通过仓库变量 VITE_API_BASE_URL 指向后端地址；未配置时构建仍可通过，
-# 但线上问答等接口会失败（属预期，需先部署后端并在仓库 Settings → Variables 配置）。
+# Deploys the frontend static site to GitHub Pages.
+# Backend API must be deployed separately; set repo variable VITE_API_BASE_URL
+# in Settings -> Secrets and variables -> Actions -> Variables.
 
 on:
   push:
     branches: [main, master]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +14,6 @@ permissions:
   pages: write
   id-token: write
 
-# 同一时间只允许一个部署，取消进行中的旧任务
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -44,10 +40,7 @@ jobs:
 
       - name: Build
         env:
-          # 项目站点部署在 /<repo>/ 下，base 必须带仓库名
           VITE_BASE: /${{ github.event.repository.name }}/
-          # 后端公网地址（在仓库 Settings → Secrets and variables → Variables 中配置 VITE_API_BASE_URL）
-          # 例如 https://api.example.com/api/v1 ；未配置则回退到 /api/v1（线上不可用，仅占位）
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
         run: npm run build
 
