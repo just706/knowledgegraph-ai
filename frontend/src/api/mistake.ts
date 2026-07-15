@@ -29,6 +29,7 @@ export interface MistakeUpdate {
   error_reason?: string
   subject?: string
   mastered?: boolean
+  review_count?: number
 }
 
 export interface MistakeExplain {

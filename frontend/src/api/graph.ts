@@ -14,6 +14,7 @@ export interface GraphEdge {
   target: number
   relation: string
   weight: number
+  source_type?: string
 }
 
 export interface GraphData {
