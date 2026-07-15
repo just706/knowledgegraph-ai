@@ -30,7 +30,7 @@ export interface ChatMessage {
   session_id: number
   role: 'user' | 'assistant'
   content: string
-  sources: Record<string, unknown>[]
+  sources: ChatSource[]
   gen_mode: 'llm' | 'local' | null
   created_at: string
 }
