@@ -3,7 +3,9 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 COPY package*.json .
-RUN npm install
+# npm 使用淘宝镜像加速，RUN 内联清代理确保直连
+RUN HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= \
+    npm install --registry=https://registry.npmmirror.com
 
 COPY . .
 # 注入后端地址（compose 中通过 args 传入）；缺省走同源 /api/v1

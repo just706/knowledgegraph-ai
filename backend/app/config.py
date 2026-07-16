@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./kg_ai.db"
 
     # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://just706.github.io",
+    ]
 
     # AI（后续 Phase 启用）
     OPENAI_API_KEY: str = ""

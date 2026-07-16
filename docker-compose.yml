@@ -4,12 +4,16 @@ services:
       context: ./backend
     container_name: kg-ai-backend
     env_file:
-      - ./.env
+      - ./backend/.env
     environment:
       # 容器内路径：SQLite 与上传文件落到挂载卷
       - DATABASE_URL=sqlite:////app/data/kg_ai.db
       - CHROMA_PERSIST_DIR=/app/data/chroma
       - DEBUG=False
+      # 出站代理：容器通过 host.docker.internal 访问宿主机 WSL IP 上的本地代理(7897)
+      - HTTP_PROXY=http://172.21.176.1:7897
+      - HTTPS_PROXY=http://172.21.176.1:7897
+      - NO_PROXY=localhost,127.0.0.1,backend,frontend,host.docker.internal
     volumes:
       - backend-data:/app/data
     ports:

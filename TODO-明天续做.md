@@ -1,58 +1,76 @@
-# 待办：GitHub 发布（明天续做）
+# 工作进度与明日计划
 
-> 当前状态（2026-07-14 晚）：所有代码改动已 commit 到本地 `master` 分支，工作区干净。
-> 卡点：本机网络访问 github.com 超时（443 连不上），`gh auth login` 失败，远程仓库尚未创建、代码尚未推送。
+> 最近更新：2026-07-15 晚
 
-## 明天步骤
+---
 
-### 1. 解决网络（关键前提）
-在 PowerShell 测试能否连通：
-```powershell
-Test-NetConnection github.com -Port 443
+## 一、当前状态总览
+
+| 项目 | 状态 | 地址 / 说明 |
+|------|------|-------------|
+| GitHub 仓库 | ✅ 已建、已推送 | https://github.com/just706/knowledgegraph-ai |
+| GitHub Pages（纯前端静态） | ✅ 已上线（HTTP 200） | https://just706.github.io/knowledgegraph-ai/ |
+| 本机 Docker 全功能（前后端） | ✅ 运行中 | backend:8000 healthy、frontend:5173 nginx |
+| 公网访问（Cloudflare Tunnel） | ✅ 已打通、手机可达 | 见下方临时域名 |
+
+### Cloudflare Tunnel 公网地址（临时）
 ```
-- 若 `TcpTestSucceeded=False`：开启 VPN/代理，或换手机热点，然后给 git 配代理（端口按你代理实际值改）：
-```powershell
-git config --global http.proxy http://127.0.0.1:7890
-git config --global https.proxy http://127.0.0.1:7890
+https://loc-mate-remember-allied.trycloudflare.com/
 ```
+- ✅ 前端 200、后端 /api/v1/health 200，全功能可用。
+- ✅ 已实测：手机移动网络（非局域网）可正常访问。
+- ⚠️ **临时域名**：电脑关机 / 隧道进程退出即失效，重启后域名会变。
+- ⚠️ 依赖本机开机 + cloudflared 进程 + Docker 容器均在运行。
 
-### 2. 登录 GitHub（用 token，跳过浏览器授权页）
-1. 浏览器登录 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)
-2. 勾选：`repo`、`workflow`、`read:org`，生成并复制 token（ghp_ 开头，自己保存，别外传）
-3. PowerShell 执行（token 自己粘贴）：
-```powershell
-$env:GH_TOKEN = "<你的token>"
-gh auth login --with-token
-```
+---
 
-### 3. 一键发布
+## 二、今天（2026-07-15）完成的工作
+
+- [x] 核对任务列表，确认仓库已建、已推送、Pages 已上线（旧 TODO 已过时）。
+- [x] 验证 GitHub Pages 站点可正常访问（HTTP 200）。
+- [x] 安装 cloudflared v2026.7.1，用 quick tunnel 将本机前端(5173) 暴露到公网。
+- [x] 排查并修复隧道 403 问题：
+  - 定位根因为 **Vite allowedHosts Host 校验**（外部域名被拒）。
+  - `frontend/vite.config.ts` 新增 `allowedHosts: true`。
+  - `frontend/nginx.conf` 将 API 代理 Host 固定为 `backend:8000`，避免外部域名透传触发 Host/CORS 校验。
+  - 重建前端镜像后，隧道域名返回 200，API 同样 200。
+- [x] 验证公网全链路：前端页面 + 后端 API 均可用。
+- [x] 验证手机移动网络（脱离局域网）可访问，网络可达确认通过。
+
+---
+
+## 三、遗留 / 待办（明日优先）
+
+### 1. 提交并推送本次改动（优先级：高）
+当前工作区有未提交改动，需 commit + push：
+- `frontend/vite.config.ts`（allowedHosts:true）
+- `frontend/nginx.conf`（API 代理 Host 固定）
+- 之前 Docker 相关未提交文件：`backend/Dockerfile`、`backend/app/config.py`、`backend/requirements.txt`、`docker-compose.yml`、`frontend/Dockerfile`
+- 新增：`backend/pytest.ini`
+
 ```powershell
 cd "D:\KnowledgeGraph AI 智能学习助手系统"
-powershell -ExecutionPolicy Bypass -File .\deploy-to-github.ps1 -Repo knowledgegraph-ai
+git add -A
+git commit -m "feat: 修复 Cloudflare Tunnel 公网访问(Vite allowedHosts + nginx 代理 Host)"
+git push
 ```
-脚本会：建仓库 → 推送 master → 启用 GitHub Pages。
-完成后站点：https://<你的用户名>.github.io/knowledgegraph-ai/
 
-### 4. 验证
-- 打开 Actions 页看 `deploy-pages` 工作流是否绿
-- 访问上面的 Pages 地址，确认前端页面能打开
+### 2. 固定公网域名（优先级：中，可选）
+临时域名重启即变，若要长期稳定对外分享，建议其一：
+- **方案 A（推荐）**：Cloudflare 命名隧道（Named Tunnel）
+  - 需要：Cloudflare 账号 + 一个自有域名（或用 Cloudflare 免费域名策略）。
+  - 步骤：`cloudflared tunnel login` → `tunnel create` → 配 `config.yml` 绑定域名 → `tunnel run`。
+  - 好处：域名固定，可配开机自启为 Windows 服务，别人链接永久有效。
+- **方案 B**：部署后端到有公网 IP 的服务器 + Pages 配 `VITE_API_BASE_URL`，实现纯云端全功能（不依赖本机开机）。
 
-## 重要提醒
-- **GitHub Pages 只能托管前端静态页**，登录/问答/上传等需要后端 API 的功能暂时不可用。
-- 要让功能真正可用：把后端用之前配好的 Docker 部署到有公网 IP 的服务器，拿到 `https://api.你的域名.com`，
-  然后在仓库 **Settings → Secrets and variables → Actions → Variables** 新增：
-  `VITE_API_BASE_URL = https://api.你的域名.com/api/v1`，再重跑一次 Pages 工作流。
+### 3. 让隧道随开机自启（优先级：低，视需求）
+- 将 cloudflared 注册为 Windows 服务，避免每次手动开隧道。
+- 需在完成"固定域名"后再做，临时隧道自启意义不大（域名仍会变）。
 
-## 已完成清单（本次会话）
-- [x] 后端 Dockerfile + 前端 Dockerfile + nginx.conf + docker-compose.yml
-- [x] 根 .env.example（修正硬编码 SECRET_KEY）
-- [x] 后端/前端/.dockerignore
-- [x] CI 工作流 ci.yml + docker-publish.yml（推 GHCR）
-- [x] PRD §1.12 部署与运维 + 第八章容器化说明
-- [x] README 进度/目录结构同步
-- [x] 前端适配 Pages：hash 路由、Vite base、favicon 相对路径
-- [x] Pages 部署工作流 deploy-pages.yml
-- [x] .gitignore 补全（.env / *.bak / 缓存 / 停止追踪日志）
-- [x] gh CLI 已通过 winget 安装（v2.96.0）
-- [x] 一键发布脚本 deploy-to-github.ps1
-- [x] 所有改动已 commit 到本地 master
+---
+
+## 四、重要提醒
+
+- **GitHub Pages 只托管前端静态页**，登录/问答/上传等后端功能在 Pages 上不可用；全功能目前依赖本机 Docker + Cloudflare Tunnel。
+- 若要真正"不依赖本机开机"的全功能公网服务，必须走上面的 **方案 B**（云服务器部署后端）。
+- 分享临时链接给他人试用时，务必保持本机开机、隧道与容器进程存活。

@@ -14,12 +14,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 允许任意 Host（含 Cloudflare Tunnel / 公网反代域名），否则 preview/dev 会 403
+    allowedHosts: true,
     // 关闭 HMR 错误覆盖层：编译错误只走 console，避免旧错误遮罩卡住整个页面导致"点不了"
     hmr: { overlay: false },
     proxy: {
       // 开发环境将 /api 代理到后端，避免跨域
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:8011',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
     },
