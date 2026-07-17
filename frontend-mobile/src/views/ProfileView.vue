@@ -12,6 +12,7 @@
     </div>
 
     <van-cell-group inset class="menu">
+      <van-cell title="学习中心" icon="chart-trending-o" is-link to="/study" />
       <van-cell title="API 设置" icon="setting-o" is-link to="/settings" />
       <van-cell v-if="auth.user?.role === 'admin'" title="后台管理" icon="shield-o" is-link to="/admin" />
       <van-cell title="退出登录" icon="cross" @click="logout" />

@@ -24,6 +24,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'quiz', name: 'quiz', component: () => import('@/views/QuizView.vue'), meta: { title: '练习' } },
       { path: 'mistakes', name: 'mistakes', component: () => import('@/views/MistakeView.vue'), meta: { title: '错题本' } },
       { path: 'map', name: 'map', component: () => import('@/views/MapView.vue'), meta: { title: '知识地图' } },
+      { path: 'study', name: 'study', component: () => import('@/views/StudyCenterView.vue'), meta: { title: '学习中心' } },
       { path: 'profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { title: '我的' } },
       { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: 'API设置' } },
       { path: 'admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { title: '后台管理', admin: true } },
