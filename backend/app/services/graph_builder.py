@@ -256,6 +256,17 @@ def get_graph(db: Session, user_id: int, min_weight: int = 1, category: str | No
         entities = [e for e in entities if e.id in cat_entity_ids]
     relations = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
 
+    # 聚合每个实体所属分类（来自 entity_sources），供移动端按分类展示/筛选
+    cat_rows = db.execute(
+        select(EntitySource.entity_id, EntitySource.category).where(
+            EntitySource.user_id == user_id
+        )
+    ).all()
+    entity_categories: dict[int, list[str]] = defaultdict(list)
+    for entity_id, category in cat_rows:
+        if category and category not in entity_categories[entity_id]:
+            entity_categories[entity_id].append(category)
+
     degree: dict[int, int] = defaultdict(int)
     nodes = []
     for e in entities:
@@ -265,6 +276,9 @@ def get_graph(db: Session, user_id: int, min_weight: int = 1, category: str | No
                 "name": e.name,
                 "label": e.label,
                 "mentions": e.mention_count,
+                # 兼容移动端字段命名（见 frontend-mobile/src/api/graph.ts）
+                "mention_count": e.mention_count,
+                "categories": entity_categories.get(e.id, []),
                 "degree": 0,  # 稍后填充
             }
         )

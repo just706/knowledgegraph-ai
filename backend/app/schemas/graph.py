@@ -10,6 +10,9 @@ class GraphNode(BaseModel):
     label: str
     mentions: int
     degree: int
+    # 移动端字段（与 pc 端 mentions/degree 并存，便于两端复用同一响应）
+    mention_count: int = 0
+    categories: list[str] = []
 
 
 class GraphEdge(BaseModel):

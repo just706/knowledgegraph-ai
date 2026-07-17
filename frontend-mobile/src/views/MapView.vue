@@ -10,7 +10,15 @@
     <!-- 图谱 -->
     <div v-show="activeTab === 'graph'" class="graph-area" ref="graphEl" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
       <van-empty v-if="loading" description="加载中..." />
-      <van-empty v-else-if="nodes.length === 0" description="暂无图谱数据" />
+      <div v-else-if="nodes.length === 0" class="graph-empty">
+        <van-empty description="暂无图谱数据">
+          <template #bottom>
+            <van-button type="primary" size="small" :loading="building" @click="rebuild">
+              从我的资料构建
+            </van-button>
+          </template>
+        </van-empty>
+      </div>
       <svg
         v-else
         class="graph-svg"
@@ -37,15 +45,15 @@
           >
             <circle
               :r="nodeRadius(n)"
-              :fill="selected === n.id ? '#1989fa' : '#c8e0ff'"
-              :stroke="selected === n.id ? '#1989fa' : '#a7cfff'"
+              :fill="selected === n.id ? '#1989fa' : nodeColor(n)"
+              :stroke="selected === n.id ? '#1989fa' : '#ffffff'"
               stroke-width="2"
             />
             <text
               :y="nodeRadius(n) + 12"
               text-anchor="middle"
               font-size="11"
-              fill="#323233"
+              :fill="selected === n.id ? '#1989fa' : '#323233'"
             >{{ n.name }}</text>
           </g>
         </g>
@@ -57,16 +65,34 @@
         <van-icon name="replay" @click="resetView" />
       </div>
 
-      <van-popup v-model:show="showNode" position="bottom" round :style="{ height: '40%' }">
+      <van-popup v-model:show="showNode" position="bottom" round :style="{ height: 'auto' }">
         <div class="node-panel" v-if="activeNode">
-          <h3>{{ activeNode.name }}</h3>
-          <p v-if="activeNode.label" class="label">{{ activeNode.label }}</p>
-          <p class="meta">提及 {{ activeNode.mention_count }} 次 · {{ (activeNode.categories || []).join(' / ') }}</p>
-          <p class="rel" v-if="relatedEdges.length">
-            关联: {{ relatedEdges.map((e) => e.relation).join('、') }}
+          <div class="np-head">
+            <i class="np-dot" :style="{ background: nodeColor(activeNode) }" />
+            <h3>{{ activeNode.name }}</h3>
+          </div>
+          <p class="label">类型：{{ activeNode.label || '其他' }}</p>
+          <p class="meta">
+            提及 {{ activeNode.mention_count || 0 }} 次 · 关联 {{ relatedEdges.length }} 条
           </p>
+          <p class="meta" v-if="(activeNode.categories || []).length">
+            分类：{{ activeNode.categories.join(' / ') }}
+          </p>
+          <p class="rel" v-if="relatedEdges.length">
+            关系：{{ relatedEdges.map((e) => e.relation).join('、') }}
+          </p>
+          <div class="np-actions">
+            <van-button size="small" type="primary" plain @click="rebuild">重建图谱</van-button>
+            <van-button size="small" type="danger" plain @click="onClear">清空</van-button>
+          </div>
         </div>
       </van-popup>
+
+      <div v-if="activeTab === 'graph' && nodes.length" class="graph-legend">
+        <span v-for="(c, k) in LABEL_COLORS" :key="k" class="lg-item">
+          <i class="lg-dot" :style="{ background: c }" />{{ k }}
+        </span>
+      </div>
     </div>
 
     <!-- 思维导图 -->
@@ -81,7 +107,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
-import { getGraph, type GraphNode, type GraphEdge } from '@/api/graph'
+import { showToast, showConfirmDialog } from 'vant'
+import { getGraph, buildGraph, clearGraph, type GraphNode, type GraphEdge } from '@/api/graph'
 import { getMindmap, type MindmapNode } from '@/api/mindmap'
 import TreeNode from '@/components/TreeNode.vue'
 
@@ -90,10 +117,24 @@ const graphEl = ref<HTMLElement | null>(null)
 const svgW = ref(300)
 const svgH = ref(400)
 const loading = ref(false)
+const building = ref(false)
 
 const nodes = ref<GraphNode[]>([])
 const edges = ref<GraphEdge[]>([])
 const mindmap = ref<{ root: MindmapNode } | null>(null)
+
+// 按标签着色（与 PC 端 GraphPage 配色保持一致）
+const LABEL_COLORS: Record<string, string> = {
+  概念: '#5B8FF9',
+  方法: '#61DDAA',
+  结构: '#F6BD16',
+  术语: '#7262FD',
+  人物: '#ff9845',
+  其他: '#bfbfbf',
+}
+function nodeColor(n: GraphNode): string {
+  return LABEL_COLORS[n.label] || '#5B8FF9'
+}
 
 type P = { x: number; y: number; vx: number; vy: number }
 const pos = ref<Record<number, P>>({})
@@ -108,7 +149,8 @@ const activeNode = ref<GraphNode | null>(null)
 let simTimer: number | null = null
 
 function nodeRadius(n: GraphNode): number {
-  return Math.min(18, 8 + Math.log(n.mention_count + 1) * 3)
+  const mc = n.mention_count || 0
+  return Math.min(18, 8 + Math.log(mc + 1) * 3)
 }
 
 const relatedEdges = ref<GraphEdge[]>([])
@@ -128,8 +170,8 @@ async function loadGraph() {
   loading.value = true
   try {
     const res = await getGraph()
-    nodes.value = res.nodes
-    edges.value = res.edges
+    nodes.value = res.nodes || []
+    edges.value = res.edges || []
     if (nodes.value.length > 0) {
       await nextTick()
       measure()
@@ -138,6 +180,41 @@ async function loadGraph() {
     }
   } finally {
     loading.value = false
+  }
+}
+
+// 从用户资料构建/重建图谱
+async function rebuild() {
+  if (building.value) return
+  building.value = true
+  try {
+    const res = await buildGraph()
+    showToast(res.message + '（手动标注已保留）')
+    selected.value = null
+    await loadGraph()
+  } catch {
+    // 拦截器已提示
+  } finally {
+    building.value = false
+  }
+}
+
+// 清空图谱
+async function onClear() {
+  try {
+    await showConfirmDialog({
+      title: '清空图谱',
+      message: '确定清空当前图谱？自动抽取的关系与你的手动标注都将被删除。',
+    })
+  } catch {
+    return
+  }
+  try {
+    const res = await clearGraph()
+    showToast(res.message)
+    await loadGraph()
+  } catch {
+    // 拦截器已提示
   }
 }
 
@@ -357,13 +434,58 @@ onBeforeUnmount(() => {
   }
 }
 
+.graph-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.graph-legend {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  max-width: 70%;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+
+  .lg-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--kg-text-secondary);
+  }
+  .lg-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+}
+
 .node-panel {
   padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
 
-  h3 { margin-top: 0; font-size: 18px; }
-  .label { color: var(--kg-text-secondary); }
-  .meta { font-size: 13px; color: var(--kg-text-secondary); }
-  .rel { font-size: 13px; color: var(--kg-primary); }
+  h3 { margin: 0; font-size: 18px; }
+  .np-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .np-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .label { color: var(--kg-text-secondary); margin: 4px 0; }
+  .meta { font-size: 13px; color: var(--kg-text-secondary); margin: 4px 0; }
+  .rel { font-size: 13px; color: var(--kg-primary); margin: 4px 0; }
+  .np-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    :deep(.van-button) { flex: 1; }
+  }
 }
 
 .mindmap-area {
