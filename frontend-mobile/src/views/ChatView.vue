@@ -2,6 +2,10 @@
   <div class="chat-view">
     <van-nav-bar title="AI助手" :right-text="sessionListVisible ? '完成' : '会话'" @click-right="toggleSessionList" />
 
+  <div v-if="messages.length > 1 && !sessionListVisible" class="history-hint">
+    多轮对话已开启 · 已 context {{ Math.ceil(messages.length / 2) }} 轮
+  </div>
+
     <!-- 会话列表 -->
     <div v-if="sessionListVisible" class="session-list">
       <van-cell
@@ -116,7 +120,11 @@ async function send() {
   scrollToBottom()
 
   try {
-    const res = await sendChat({ query: q, session_id: currentSessionId.value || undefined })
+    const res = await sendChat({
+      query: q,
+      session_id: currentSessionId.value || undefined,
+      history: buildHistory(),
+    })
     currentSessionId.value = res.session_id
     messages.value.push({ id: -2, session_id: res.session_id, role: 'assistant', content: res.answer, sources: res.sources, gen_mode: res.mode, created_at: '' } as ChatMessage)
     scrollToBottom()
@@ -131,6 +139,13 @@ async function deleteSession(id: number) {
   await apiDeleteSession(id)
   sessions.value = await listSessions()
   showToast('已删除')
+}
+
+// 组装最近 N 轮对话作为多轮上下文（最多 6 轮 = 12 条），剔除临时乐观消息
+function buildHistory() {
+  const real = messages.value.filter((m) => m.id > 0)
+  const last = real.slice(-12)
+  return last.map((m) => ({ role: m.role, content: m.content }))
 }
 
 function scrollToBottom() {
@@ -151,6 +166,15 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 50px);
+}
+
+.history-hint {
+  font-size: 11px;
+  color: var(--kg-text-secondary);
+  background: var(--kg-bg);
+  padding: 4px 12px;
+  text-align: center;
+  border-bottom: 1px solid var(--kg-border);
 }
 
 .session-list {

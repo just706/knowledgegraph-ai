@@ -33,11 +33,17 @@ export interface Paginated<T> {
   items: T[]
 }
 
+export interface ChatHistoryTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface AskPayload {
   query: string
   top_k?: number
   mode?: ChatMode
   session_id?: number
+  history?: ChatHistoryTurn[]
 }
 
 export function sendChat(payload: AskPayload): Promise<{

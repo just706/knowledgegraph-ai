@@ -144,6 +144,7 @@ def chat(payload: ChatRequest, db: DbSession, current_user: CurrentUser) -> Chat
         top_k=payload.top_k or 5,
         mode=payload.mode or "normal",
         user=current_user,
+        history=payload.history,
     )
 
     # 持久化助手回答

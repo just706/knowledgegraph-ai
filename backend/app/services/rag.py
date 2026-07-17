@@ -40,13 +40,32 @@ def answer(
     top_k: int = 5,
     mode: str = "normal",
     user=None,
+    history: list[dict[str, str]] | None = None,
 ) -> dict:
-    """执行 RAG 问答，返回 {answer, sources}。user 用于解析其 LLM 凭证。"""
+    """执行 RAG 问答，返回 {answer, sources}。user 用于解析其 LLM 凭证。
+
+    history 为前端传入的最近若干轮对话（[{role, content}]），用于：
+    - 检索时把追问/指代补全为带上下文的查询，提升召回准确率；
+    - 生成时作为对话背景，让回答理解"它""这个"等指代。
+    """
     ensure_embeddings(db, user_id)
-    hits = retrieve(db, user_id, query, top_k=top_k)
+
+    # 将多轮历史压缩为一段对话摘要文本，用于辅助检索与生成
+    history_text = _format_history(history)
+    # 检索查询：若有历史，将当前问题结合上一轮用户问题做轻量扩展，
+    # 帮助理解指代（如"它是什么" → "X 是什么"）。
+    retrieval_query = query
+    if history_text:
+        last_user_turn = _last_user_question(history)
+        if last_user_turn and last_user_turn != query:
+            retrieval_query = f"{last_user_turn} {query}"
+
+    hits = retrieve(db, user_id, retrieval_query, top_k=top_k)
 
     chunks = [c for c, _ in hits]
-    answer_text, gen_mode = generate_answer(query, chunks, mode=mode, user=user)
+    answer_text, gen_mode = generate_answer(
+        query, chunks, mode=mode, user=user, history_text=history_text
+    )
 
     sources = [
         {
@@ -58,6 +77,31 @@ def answer(
         for c, score in hits
     ]
     return {"answer": answer_text, "sources": sources, "mode": gen_mode}
+
+
+def _format_history(history: list[dict[str, str]] | None) -> str:
+    """将对话历史格式化为可读文本（仅 role/content 字段）。"""
+    if not history:
+        return ""
+    lines = []
+    for turn in history:
+        role = turn.get("role")
+        content = (turn.get("content") or "").strip()
+        if not content:
+            continue
+        speaker = "用户" if role == "user" else "助手"
+        lines.append(f"{speaker}：{content}")
+    return "\n".join(lines)
+
+
+def _last_user_question(history: list[dict[str, str]] | None) -> str:
+    """取历史中最后一条用户提问（用于检索查询扩写）。"""
+    if not history:
+        return ""
+    for turn in reversed(history):
+        if turn.get("role") == "user" and (turn.get("content") or "").strip():
+            return turn["content"].strip()
+    return ""
 
 
 def list_user_documents(db: Session, user_id: int) -> list[Document]:

@@ -25,6 +25,9 @@ class ChatRequest(BaseModel):
     mode: str | None = Field(default="normal", pattern="^(normal|beginner|exam|interview)$")
     # 可选会话 id：不传则自动新建会话，传则追加到该会话
     session_id: int | None = Field(default=None)
+    # 多轮对话上下文：由前端按"最近 N 轮"组装为 {role, content} 列表，
+    # 用于让 RAG 生成与检索理解追问/指代（如"它""这个"），不持久化、不回传。
+    history: list[dict[str, str]] | None = Field(default=None)
 
 
 class ChatSource(BaseModel):

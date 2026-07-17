@@ -32,15 +32,24 @@ _MODE_PROMPTS: dict[str, str] = {
 }
 
 
-def _build_prompt(query: str, contexts: list[str], mode: str = "normal") -> str:
+def _build_prompt(
+    query: str, contexts: list[str], mode: str = "normal", history_text: str = ""
+) -> str:
     context_block = "\n\n".join(
         f"[资料 {i + 1}]\n{c}" for i, c in enumerate(contexts)
     )
     mode_instruction = _MODE_PROMPTS.get(mode, _MODE_PROMPTS["normal"])
+    history_block = ""
+    if history_text:
+        history_block = (
+            "以下是你与用户的对话历史（仅作上下文理解，回答仍须基于资料）：\n"
+            f"{history_text}\n\n"
+        )
     return (
         "你是一个严谨的学习助手。请仅基于以下资料回答问题，"
         "若资料中无答案，请明确告知无法从资料中找到答案，不要编造。\n"
         f"{mode_instruction}\n\n"
+        f"{history_block}"
         f"{context_block}\n\n"
         f"问题：{query}\n\n回答："
     )
@@ -69,6 +78,7 @@ def generate_answer(
     chunks: Sequence[DocumentChunk],
     mode: str = "normal",
     user=None,
+    history_text: str = "",
 ) -> tuple[str, str]:
     """基于召回切片生成答案。user 为当前登录用户（用于解析其 LLM 凭证）。
 
@@ -83,14 +93,23 @@ def generate_answer(
 
     if is_llm_enabled(user):
         try:
-            return _remote_generate(query, [c.content for c in chunks], mode, user), "llm"
+            return (
+                _remote_generate(query, [c.content for c in chunks], mode, user, history_text),
+                "llm",
+            )
         except Exception:  # noqa: BLE001  AI 调用失败降级
             return _local_answer(query, chunks), "local"
     return _local_answer(query, chunks), "local"
 
 
-def _remote_generate(query: str, contexts: list[str], mode: str = "normal", user=None) -> str:
-    prompt = _build_prompt(query, contexts, mode)
+def _remote_generate(
+    query: str,
+    contexts: list[str],
+    mode: str = "normal",
+    user=None,
+    history_text: str = "",
+) -> str:
+    prompt = _build_prompt(query, contexts, mode, history_text)
     return chat_completion(
         user,
         system_prompt="你是 KnowledgeGraph AI 智能学习助手。",
