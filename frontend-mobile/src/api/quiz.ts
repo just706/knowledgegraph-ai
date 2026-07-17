@@ -3,50 +3,68 @@ import request from '@/utils/request'
 export type QuizSource = 'knowledge' | 'mistakes' | 'graph'
 export type QuizType = 'choice' | 'fill' | 'judgment' | 'short'
 
+/** 单道题目（与后端 QuizQuestion 对齐） */
 export interface QuizItem {
-  id: number
-  source: QuizSource
+  source: string
   q_type: QuizType
+  subject: string
   question: string
-  options: string[] | null
+  options: string[]
   answer: string
-  explanation: string | null
-  difficulty: number | null
-  knowledge_point: string | null
+  explanation: string
+  difficulty: number
+  knowledge_point: string
 }
 
 export interface GenerateRequest {
-  source: QuizSource
-  q_types?: QuizType[]
+  sources: QuizSource[]
   count?: number
-  category?: string
+  subject?: string
+  q_types?: QuizType[]
 }
 
-export function generateQuizzes(data: GenerateRequest): Promise<QuizItem[]> {
+export interface GenerateResponse {
+  questions: QuizItem[]
+  mode: string
+  message: string
+}
+
+export function generateQuizzes(data: GenerateRequest): Promise<GenerateResponse> {
   return request.post('/quiz/generate', data)
 }
 
+/** 提交作答的一条记录（与后端 QuizAnswerItem 对齐） */
+export interface QuizAnswerItem {
+  question: string
+  user_answer: string
+  answer: string
+  source?: string
+  subject?: string
+  explanation?: string
+  q_type?: QuizType
+}
+
 export interface SubmitPayload {
-  session_id?: number
-  answers: Array<{
-    quiz_id: number
-    user_answer: string
-  }>
+  answers: QuizAnswerItem[]
+}
+
+export interface SubmitDetail {
+  question: string
+  user_answer: string
+  correct_answer: string
+  is_correct: boolean
+  explanation: string | null
+  advanced_mistake_ids: number[]
 }
 
 export interface SubmitResult {
   total: number
   correct: number
+  wrong: number
   score: number
-  details: Array<{
-    quiz_id: number
-    question: string
-    user_answer: string
-    correct_answer: string
-    is_correct: boolean
-    explanation: string | null
-    advanced_mistake_ids: number[]
-  }>
+  wrong_items: QuizAnswerItem[]
+  advanced_mistake_ids: number[]
+  details: SubmitDetail[]
 }
 
 export function submitQuiz(data: SubmitPayload): Promise<SubmitResult> {

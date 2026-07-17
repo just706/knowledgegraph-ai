@@ -2,15 +2,23 @@
   <div class="mistake-view">
     <van-nav-bar
       :title="`错题本 (${unmasteredCount})`"
-      right-text="薄弱点"
-      @click-right="openWeakness"
-    />
+    >
+      <template #right>
+        <van-button size="small" type="primary" @click="goPractice">薄弱点练习</van-button>
+      </template>
+    </van-nav-bar>
 
     <div class="filter-bar">
       <van-dropdown-menu>
         <van-dropdown-item v-model="filterMastered" :options="masteredOptions" @change="load" />
         <van-dropdown-item v-model="filterSubject" :options="subjectOptions" @change="load" />
       </van-dropdown-menu>
+    </div>
+
+    <div class="weakness-tip" v-if="unmasteredCount > 0" @click="openWeakness">
+      <van-icon name="bulb-o" />
+      <span>有 {{ unmasteredCount }} 道待复习，点击查看薄弱点分析</span>
+      <van-icon name="arrow" />
     </div>
 
     <van-pull-refresh v-model="refreshing" @refresh="load">
@@ -61,6 +69,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { analyzeWeakness } from '@/api/mistake'
 import { showToast, showConfirmDialog } from 'vant'
 import {
@@ -68,6 +77,8 @@ import {
   type MistakeItem,
 } from '@/api/mistake'
 import { renderMarkdown } from '@/utils/markdown'
+
+const router = useRouter()
 
 const mistakes = ref<MistakeItem[]>([])
 const subjects = ref<string[]>([])
@@ -94,6 +105,10 @@ const weakness = ref<{ weak_subjects: string[]; suggestions: string[] } | null>(
 async function openWeakness() {
   weakness.value = await analyzeWeakness()
   showWeakness.value = true
+}
+
+function goPractice() {
+  router.push({ path: '/quiz', query: { source: 'mistakes' } })
 }
 
 async function load() {
@@ -154,6 +169,21 @@ onMounted(async () => {
 
 .filter-bar {
   background: var(--kg-card);
+}
+
+.weakness-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  margin: 8px 16px;
+  background: linear-gradient(135deg, #fff7e6, #fffbe6);
+  border: 1px solid #ffe7ba;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #ad6800;
+
+  span { flex: 1; }
 }
 
 .detail-panel {

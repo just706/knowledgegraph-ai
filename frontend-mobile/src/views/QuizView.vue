@@ -78,7 +78,11 @@
       <p>正确 {{ result?.correct }} / {{ result?.total }}</p>
 
       <van-cell-group inset class="detail-list">
-        <van-cell v-for="d in result?.details" :key="d.quiz_id" :title="d.question">
+        <van-cell
+          v-for="(d, idx) in result?.details"
+          :key="idx"
+          :title="d.question"
+        >
           <template #label>
             <span :class="d.is_correct ? 'correct' : 'wrong'">
               {{ d.is_correct ? '✓ 正确' : '✗ 错误' }}
@@ -113,10 +117,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { showToast } from 'vant'
 import { generateQuizzes, submitQuiz, type QuizItem, type SubmitResult, type QuizSource, type QuizType } from '@/api/quiz'
 import { renderMarkdown } from '@/utils/markdown'
+
+const route = useRoute()
 
 type Phase = 'setup' | 'answering' | 'result'
 const phase = ref<Phase>('setup')
@@ -135,7 +142,7 @@ const selectedTypes = ref<QuizType[]>(['choice', 'fill', 'judgment', 'short'])
 
 const quizzes = ref<QuizItem[]>([])
 const currentIndex = ref(0)
-const answers = ref<Record<number, string>>({})
+const answers = ref<Record<string, string>>({}) // key 用 question 文本，避免 id 不一致
 const currentAnswer = ref('')
 const generating = ref(false)
 
@@ -155,12 +162,13 @@ function onCountConfirm({ selectedValues }: { selectedValues: (number | string)[
 async function generate() {
   generating.value = true
   try {
-    quizzes.value = await generateQuizzes({
-      source: sourceMap[sourceLabel.value],
+    const res = await generateQuizzes({
+      sources: [sourceMap[sourceLabel.value]],
       q_types: selectedTypes.value,
       count: Number(countLabel.value),
-      category: category.value || undefined,
+      subject: category.value || undefined,
     })
+    quizzes.value = res.questions
     if (quizzes.value.length === 0) {
       showToast('暂无题目，请换来源或上传资料')
       return
@@ -181,7 +189,7 @@ function nextQuestion() {
     showToast('请输入答案')
     return
   }
-  answers.value[currentQuiz.value.id] = currentAnswer.value
+  answers.value[currentQuiz.value.question] = currentAnswer.value
   if (currentIndex.value + 1 >= quizzes.value.length) {
     submit()
   } else {
@@ -193,7 +201,15 @@ function nextQuestion() {
 async function submit() {
   try {
     const res = await submitQuiz({
-      answers: quizzes.value.map((q) => ({ quiz_id: q.id, user_answer: answers.value[q.id] || '' })),
+      answers: quizzes.value.map((q) => ({
+        question: q.question,
+        user_answer: answers.value[q.question] || '',
+        answer: q.answer,
+        source: q.source,
+        subject: q.subject,
+        explanation: q.explanation,
+        q_type: q.q_type,
+      })),
     })
     result.value = res
     phase.value = 'result'
@@ -207,6 +223,14 @@ function reset() {
   quizzes.value = []
   result.value = null
 }
+
+// 支持从错题本「薄弱点练习」跳转：?source=mistakes
+onMounted(() => {
+  const src = route.query.source as string | undefined
+  if (src && sourceMap[src]) {
+    sourceLabel.value = src
+  }
+})
 </script>
 
 <style scoped lang="scss">
