@@ -124,6 +124,27 @@
         </div>
       </div>
 
+      <!-- 今日学习计划 -->
+      <div class="card plan-card" v-if="plan">
+        <div class="plan-head">
+          <div class="card-title"><van-icon name="calendar-o" /> 今日学习计划</div>
+          <van-tag v-if="plan.mode === 'llm'" type="primary" plain>AI 规划</van-tag>
+          <van-tag v-else type="warning" plain>本地规划</van-tag>
+        </div>
+        <div class="plan-goal">{{ plan.goal }}</div>
+        <div class="plan-tasks">
+          <div v-for="(t, i) in plan.tasks" :key="i" class="plan-task">
+            <div class="pt-main">
+              <span class="pt-title">{{ t.title }}</span>
+              <van-tag size="medium" :color="typeColor(t.type)">{{ t.type }}</van-tag>
+            </div>
+            <div class="pt-detail">{{ t.detail }}</div>
+            <div class="pt-meta">⏱ {{ t.duration }} 分钟</div>
+          </div>
+        </div>
+        <div class="plan-tip" v-if="plan.tip"><van-icon name="bulb-o" /> {{ plan.tip }}</div>
+      </div>
+
       <!-- AI 建议 -->
       <div class="card suggest" v-if="data.ai_suggestion">
         <div class="card-title"><van-icon name="bulb-o" /> AI 学习建议</div>
@@ -162,6 +183,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getOverview, type StatsOverview } from '@/api/stats'
+import { getTodayPlan, type StudyPlan } from '@/api/plan'
 import { renderMarkdown } from '@/utils/markdown'
 import { useAuthStore } from '@/store/auth'
 
@@ -169,6 +191,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const loading = ref(true)
+const plan = ref<StudyPlan | null>(null)
 const data = ref<StatsOverview>({
   document_count: 0, chunk_count: 0, entity_count: 0, relation_count: 0,
   mistake_total: 0, mistake_mastered: 0, mastery_rate: 0,
@@ -253,11 +276,26 @@ function go(name: string) {
 async function load() {
   loading.value = true
   try {
-    data.value = await getOverview()
+    const [overview, p] = await Promise.all([
+      getOverview(),
+      getTodayPlan().catch(() => null),
+    ])
+    data.value = overview
+    plan.value = p
   } catch {
     showToast('加载学习数据失败')
   } finally {
     loading.value = false
+  }
+}
+
+function typeColor(type: string) {
+  switch (type) {
+    case '复习': return '#1989fa'
+    case '练习': return '#07c160'
+    case '阅读': return '#7232dd'
+    case '整理': return '#ff976a'
+    default: return '#969799'
   }
 }
 
@@ -399,6 +437,44 @@ onMounted(load)
     font-size: 14px;
     line-height: 1.7;
     color: var(--kg-text);
+  }
+}
+
+.plan-card {
+  .plan-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .plan-goal {
+    margin: 10px 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--kg-primary);
+  }
+  .plan-task {
+    padding: 12px;
+    background: var(--kg-bg);
+    border-radius: 10px;
+    margin-bottom: 10px;
+
+    &:last-child { margin-bottom: 0; }
+    .pt-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .pt-title { font-size: 14px; font-weight: 600; }
+    .pt-detail { font-size: 12px; color: var(--kg-text-secondary); margin: 6px 0; line-height: 1.5; }
+    .pt-meta { font-size: 11px; color: var(--kg-text-secondary); }
+  }
+  .plan-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: #fff7e6;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #ad6800;
+    line-height: 1.5;
   }
 }
 </style>
