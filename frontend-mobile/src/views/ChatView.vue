@@ -23,16 +23,44 @@
       <van-empty v-if="sessions.length === 0" description="暂无会话" />
     </div>
 
+    <!-- 未登录/体验准备中 -->
+    <div v-else-if="!sessionReady" class="guest-area">
+      <van-empty v-if="!sessionError" description="正在准备体验环境…">
+        <template #description>
+          <p>正在准备体验环境…</p>
+        </template>
+      </van-empty>
+      <van-empty v-else image="error" description="体验登录失败">
+        <template #description>
+          <p>体验登录失败，请检查网络</p>
+        </template>
+        <van-button type="primary" round size="small" @click="initSession">点击体验</van-button>
+      </van-empty>
+    </div>
+
     <!-- 聊天区 -->
-    <div v-else class="chat-area">
-      <div class="messages" ref="messagesEl">
+    <div class="chat-area" :class="{ disabled: !sessionReady }">
+      <div ref="messagesEl" class="messages">
+        <div v-if="!sessionReady && !sessionError" class="guest-area native">
+          <div class="native-title">正在准备体验环境…</div>
+          <div class="native-sub">首次打开会自动登录体验账户，请稍候</div>
+        </div>
+
+        <div v-else-if="sessionError" class="guest-area native">
+          <div class="native-title">体验登录失败</div>
+          <div class="native-sub">请检查网络或点击按钮重试</div>
+          <button class="native-btn" @click="initSession">点击体验</button>
+        </div>
+
         <van-empty
-          v-if="messages.length === 0 && !sending"
+          v-else-if="messages.length === 0 && !sending"
           image="search"
           description="问我任何学习问题，我会结合你的资料回答"
         />
+
         <div
           v-for="(msg, i) in messages"
+          v-else
           :key="i"
           class="msg"
           :class="msg.role"
@@ -81,11 +109,13 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { showToast } from 'vant'
+import { useAuthStore } from '@/store/auth'
 import {
   listSessions, getSessionMessages, deleteSession as apiDeleteSession, sendChat, type ChatSession, type ChatMessage,
 } from '@/api/chat'
 import { renderMarkdown } from '@/utils/markdown'
 
+const auth = useAuthStore()
 const sessionListVisible = ref(false)
 const sessions = ref<ChatSession[]>([])
 const messages = ref<ChatMessage[]>([])
@@ -93,6 +123,23 @@ const currentSessionId = ref<number | null>(null)
 const query = ref('')
 const sending = ref(false)
 const messagesEl = ref<HTMLElement | null>(null)
+const sessionReady = ref(false)
+const sessionError = ref(false)
+
+async function initSession() {
+  sessionError.value = false
+  try {
+    await auth.ensureSession()
+    if (auth.isLoggedIn) {
+      sessionReady.value = true
+      sessions.value = await listSessions()
+    } else {
+      sessionError.value = true
+    }
+  } catch {
+    sessionError.value = true
+  }
+}
 
 async function toggleSessionList() {
   sessionListVisible.value = !sessionListVisible.value
@@ -111,6 +158,17 @@ async function selectSession(id: number) {
 
 async function send() {
   if (!query.value.trim()) return
+
+  // 发送前保证已登录（自动体验登录）
+  if (!auth.isLoggedIn) {
+    try {
+      await auth.ensureSession()
+    } catch {
+      showToast('体验登录失败，请检查网络')
+      return
+    }
+  }
+
   const q = query.value
   query.value = ''
   sending.value = true
@@ -156,8 +214,8 @@ function scrollToBottom() {
   })
 }
 
-onMounted(async () => {
-  sessions.value = await listSessions()
+onMounted(() => {
+  void initSession()
 })
 </script>
 
@@ -192,6 +250,51 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   flex: 1;
+
+  &.disabled {
+    .messages {
+      opacity: 0.95;
+    }
+  }
+}
+
+.guest-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+
+  .van-button {
+    margin-top: 16px;
+  }
+}
+
+.guest-area.native {
+  color: var(--kg-text-secondary);
+
+  .native-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--kg-text-primary);
+    margin-bottom: 8px;
+  }
+
+  .native-sub {
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .native-btn {
+    background: var(--kg-primary, #1989fa);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 24px;
+    font-size: 14px;
+  }
 }
 
 .messages {
@@ -297,3 +400,4 @@ onMounted(async () => {
   background: var(--kg-card);
 }
 </style>
+

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        # 公网固定域名（Cloudflare Tunnel 统一入口，PC/移动端同源访问）
+        "https://kg.studykg.me",
+        "https://www.kg.studykg.me",
         "https://just706.github.io",
     ]
 
