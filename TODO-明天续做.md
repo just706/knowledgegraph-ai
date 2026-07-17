@@ -1,6 +1,6 @@
 # 工作进度与明日计划
 
-> 最近更新：2026-07-16 下午
+> 最近更新：2026-07-17 下午
 
 ---
 
@@ -12,15 +12,18 @@
 | GitHub Pages（纯前端静态） | ✅ 已上线 | https://just706.github.io/knowledgegraph-ai/ |
 | 本机 Docker 全功能（前后端） | ✅ 运行中 | backend:8000 healthy、frontend:5173 nginx |
 | 公网访问（Cloudflare Tunnel） | ✅ 已打通、固定域名、手机可达 | https://kg.studykg.me/ |
+| 移动端 Vant 组件白屏 | ✅ 已修复 | 接入 unplugin-vue-components 按需导入 |
+| 公网 CORS 登录 | ✅ 已修复 | 白名单已包含 kg.studykg.me |
+| 移动端自动体验登录 | ✅ 已实现 | 打开即用，无需手动登录 |
 
 ### 固定域名（已生效）
 ```
 https://kg.studykg.me/
 ```
-- ✅ 前端 200、后端 `/api/v1/health` 200，全功能可用（2026-07-16 验证）。
+- ✅ 前端 200、后端 `/api/v1/health` 200，全功能可用。
 - ✅ 手机移动网络可正常访问。
 - ✅ 域名固定，关机/隧道退出后只要重新运行脚本就会恢复同一个域名。
-- ✅ 2026-07-17 对齐网关统一入口：隧道由旧 `127.0.0.1:5173`（仅 PC）改为 `127.0.0.1:80`（网关），手机访问自动 UA 分发到移动端（含图谱可视化），PC 访问 PC 端。
+- ✅ 网关统一入口 UA 分发，手机自动走移动端、PC 走 PC 端。
 - ⚠️ 仍需保持本机开机 + Docker 容器 + 本机代理 `127.0.0.1:7897` 运行。
 
 ### 命名隧道配置文件
@@ -39,64 +42,80 @@ Invoke-WebRequest -Uri "https://kg.studykg.me/api/v1/health" -UseBasicParsing
 
 ---
 
-## 二、今天（2026-07-16）完成的工作
+## 二、今天（2026-07-17）完成的工作
 
-- [x] 注册并登录 Cloudflare 账号（GitHub 登录）。
-- [x] 购买域名 `studykg.me`。
-- [x] 将 `studykg.me` 域名从阿里云 DNS 托管到 Cloudflare（NS 改为 `mallory.ns.cloudflare.com` + `nash.ns.cloudflare.com`）。
-- [x] 创建 Cloudflare 命名隧道（Named Tunnel）`studykg`。
-- [x] 创建 CNAME 记录 `kg.studykg.me` 指向命名隧道。
-- [x] 编写 `C:\cloudflared\config.yml` 和启动脚本，绑定本机前端 `127.0.0.1:5173`。
-- [x] 验证固定域名 `https://kg.studykg.me/` 与 API 全功能访问 200。
-- [x] 2026-07-17：隧道入口改为网关 `127.0.0.1:80`，PC/移动端经 UA 自动分发；网关 `gateway.conf` 增强超时（180s）+ `docker-compose.yml` 修复 healthcheck（wget→sh -c 回退 curl，消除 unhealthy 误报）。
+### 1. 移动端 Vant 组件白屏修复 ⭐ 核心
+- **问题**：手机打开 `kg.studykg.me` 只显示底部 tab 文字，中间内容区空白。
+- **根因**：Vant 组件（`van-nav-bar`、`van-empty`、`van-field`、`van-button` 等）没有被注册/按需导入，浏览器无法渲染自定义标签。
+- **修复**：
+  - `vite.config.ts` 接入 `unplugin-vue-components` + `VantResolver`，实现组件自动按需导入。
+  - `ChatView.vue` 增加原生 HTML 兜底状态（加载中/失败/重试），确保即使组件异常也能看到内容。
+  - `ProfileView.vue` 增加原生 HTML 登录入口和状态显示。
+  - `App.vue` 添加底部调试浮条，显示路由路径和登录状态，便于远程排查。
+  - `index.html` 标题改为"AI学习助手"。
+  - `gateway.conf` 添加 `Cache-Control: no-cache` + `Access-Control-Allow-Origin: *`，防止 Cloudflare/微信缓存旧版本，防止 iOS 跨域拒绝脚本执行。
+- **验证**：重新构建并部署移动端容器，公网访问返回最新 HTML/JS。
+
+### 2. 公网 CORS 登录修复
+- 后端 `CORS_ORIGINS` 白名单新增 `https://kg.studykg.me`、`https://www.kg.studykg.me`。
+- 修复登录/注册后因 `/users/me` CORS 拦截导致 token 被清 → 弹回登录页的问题。
+
+### 3. 移动端自动体验登录
+- `auth.ts` 新增 `ensureSession()`：启动时自动以体验账户静默登录。
+- 用户打开即可使用全部功能，无需手动登录。
+
+### 4. 网关增强
+- 隧道入口改为 `127.0.0.1:80`（统一网关），PC/移动端经 UA 自动分发。
+- 网关增加超时配置（180s）和 CORS/Cache-Control 头。
+- `docker-compose.yml` 修复 healthcheck（wget→curl），消除 unhealthy 误报。
 
 ---
 
 ## 三、遗留 / 待办
 
-### 1. 开机自启（可选）
-将 `C:\cloudflared\start_tunnel.ps1` 配置为 Windows 开机自动启动，或注册为 Windows 服务，避免每次手动启动。需要时再做。
+### 1. ⚠️ 需手机端验证
+- 移动端 Vant 组件修复后，需在**真实手机**上强制刷新验证：
+  - 微信内：下拉页面松手刷新，或右上角菜单 → 刷新
+  - 浏览器：清除缓存后重新打开 `https://kg.studykg.me/`
+- 观察项：首页是否显示"AI助手"导航栏 + 聊天输入框；个人中心是否有"登录我的账号"入口。
 
-### 2. 云服务器部署（可选）
-若要让服务完全脱离本机运行，需要购买一台带公网 IP 的云服务器部署后端，GitHub Pages 托管前端，并修改前端 API 基地址。
+### 2. Git Push（网络问题待重试）
+- 本地 commit `79ccc41` 已创建，因网络连接重置 push 失败，需网络恢复后 `git push`。
+
+### 3. 开机自启（可选）
+将 `C:\cloudflared\start_tunnel.ps1` 配置为 Windows 开机自动启动，或注册为 Windows 服务。
+
+### 4. 云服务器部署（可选）
+若要让服务完全脱离本机运行，需要购买云服务器部署。
 
 ---
 
-## 四、重要提醒
+## 四、明日（2026-07-18）计划
+
+### P0 - 验证与修复
+- [ ] **手机端真机验证**：在真实手机上确认 Vant 白屏问题已解决，首页聊天功能正常
+- [ ] **Git Push**：将本地 commit 推送到 GitHub
+- [ ] 如有新 bug 根据手机截图定位修复
+
+### P1 - 功能完善
+- [ ] **知识图谱手机端体验优化**：检查图谱在手机端的交互是否流畅，必要时调整触控/缩放
+- [ ] **学习中心数据对接**：检查移动端学习统计页数据是否正确显示
+- [ ] **练习/测验功能验证**：在手机上走通答题→提交→查看结果的完整流程
+
+### P2 - 体验打磨
+- [ ] 移动端各页面 loading/空态/错误态统一检查
+- [ ] 移动端响应式细节调整（字体大小、间距、安全区适配）
+- [ ] PWA 离线缓存基础配置（Service Worker，可选）
+
+### P3 - 文档与部署
+- [ ] 更新 README.md 添加移动端使用说明
+- [ ] 整理项目结构文档，方便后续维护
+
+---
+
+## 五、重要提醒
 
 - **GitHub Pages 只托管前端静态页**，登录/问答/上传等后端功能在 Pages 上不可用；全功能目前依赖本机 Docker + Cloudflare Tunnel。
 - 当前固定域名已永久可用，但服务仍在你的本机，需保持本机开机与相关进程运行。
 - 如需分享给他人的固定链接：`https://kg.studykg.me/`
-
----
-
-## 五、2026-07-17 修复：手机端无法登录/注册
-
-### 现象
-手机浏览器打开 `kg.studykg.me` 能看页面，但登录/注册后立刻被弹回登录页（登录"无效"）。
-
-### 根因
-后端 `CORS_ORIGINS` 白名单**未包含公网域名 `https://kg.studykg.me`**。
-- 登录接口（`/users/login`，无 Authorization）本身不被 CORS 拦截 → 能拿到 token。
-- 但 `auth.login()` 成功后会立即调用 `fetchUser()`（`GET /users/me`，带 `Bearer` token）。
-  浏览器带 `Origin: https://kg.studykg.me` 请求，FastAPI CORSMiddleware 因 Origin 不在白名单而**不回显 `Access-Control-Allow-Origin`** → 浏览器拦截该响应 → axios 报错 → `App.vue` 的 catch 执行 `auth.logout()` → token 被清 → 回到登录页。
-- 注册同理（register 后自动 login → fetchUser 失败 → 登出）。
-
-### 修复
-1. `backend/.env` 的 `CORS_ORIGINS` 增加 `https://kg.studykg.me`、`https://www.kg.studykg.me` 及移动端本地调试地址 `5174`。
-2. 同步修改 `backend/app/config.py` 默认值（代码层兜底，防止 .env 被清空时遗漏）。
-3. `docker compose up -d backend` 重启后端生效（无需 rebuild 镜像，因改动在 .env/配置层）。
-
-### 验证
-- 容器内 `python` 直接请求确认响应头 `Access-Control-Allow-Origin: https://kg.studykg.me` 已回显。
-- 公网模拟手机 UA：`/users/login` → 200 拿 token；带 token 请求 `/users/me` → 200，完整登录流程打通。
-- PC 端不受影响（原本就能登录，因同源 localhost 在白名单）。
-
-### 2026-07-17 补充：打开即体验（自动登录体验账户）
-- 需求：用户打开移动端即可直接体验，无需手动登录；个人中心展示账户信息。
-- 实现：
-  - `frontend-mobile/src/store/auth.ts` 新增 `ensureSession()`：已有合法会话则补充用户信息；否则以体验账户 `1234567@qq.com` / `admin` 静默登录（不弹 toast，失败不影响浏览）。`isLoggedIn` getter 改为 `token && user` 双重判定，避免"有 token 无 user"的悬空态。
-  - `main.ts` 在 `app.mount()` 前 `await auth.ensureSession()`，保证首屏路由守卫已具备会话，不会被弹到登录页。
-  - `ProfileView.vue` 增加"切换/登录我的账号"入口与体验账户说明文字。
-- 验证：移动端镜像重建成功（top-level await 构建通过）；公网首页 200；`ensureSession` 与体验账户已编译进 `auth-*.js`；体验账户 login + `/users/me` 在服务端均 200（CORS 已修复）。
 
