@@ -205,6 +205,7 @@ def chat_completion(
     except Exception as exc:  # noqa: BLE001  统一记录真实失败原因，便于排查 Key 是否有效
         logger.warning(
             "LLM 调用失败 provider=%s kind=%s model=%s base_url=%s err=%s",
+            cred.provider if hasattr(cred, "provider") else "?",
             cred.kind if hasattr(cred, "kind") else "?",
             cred.model if hasattr(cred, "model") else "?",
             cred.base_url if hasattr(cred, "base_url") else "?",

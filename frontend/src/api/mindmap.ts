@@ -14,7 +14,7 @@ export interface MindmapData {
   node_count: number
 }
 
-/** 获取当前用户的思维导图（由知识图谱投影生成）。 */
-export function getMindmap(): Promise<MindmapData> {
-  return request.get('/mindmap')
+/** 获取当前用户的思维导图（由知识图谱投影生成）。category 可选，按分类生成。 */
+export function getMindmap(category?: string): Promise<MindmapData> {
+  return request.get('/mindmap', { params: { category } })
 }

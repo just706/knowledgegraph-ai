@@ -1,0 +1,41 @@
+:root {
+  --kg-primary: #1989fa;
+  --kg-bg: #f7f8fa;
+  --kg-card: #ffffff;
+  --kg-text: #323233;
+  --kg-text-secondary: #969799;
+  --kg-border: #ebedf0;
+  --kg-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --kg-safe-top: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--kg-bg);
+  color: var(--kg-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  max-width: 750px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--kg-bg);
+}
+
+/* 全局过渡，避免闪屏 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

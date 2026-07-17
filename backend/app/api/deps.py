@@ -33,3 +33,16 @@ def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DbSessio
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_current_admin_user(current_user: CurrentUser) -> User:
+    """管理员权限校验：非 admin 用户访问管理接口返回 403。"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限",
+        )
+    return current_user
+
+
+CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]

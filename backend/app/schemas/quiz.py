@@ -68,6 +68,7 @@ class QuizSubmitResponse(BaseModel):
     wrong: int
     score: int                     # 百分制得分
     wrong_items: list[QuizAnswerItem]  # 答错的题（用于回写错题本）
+    advanced_mistake_ids: list[int] = []  # 答对并因此推进复习进度的错题 id
 
 
 class QuizOut(BaseModel):

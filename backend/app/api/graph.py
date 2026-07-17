@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.document import Document, DocumentChunk
+from app.models.graph import EntitySource
 from app.schemas.graph import (
     GraphBuildResponse,
     GraphDataResponse,
@@ -30,30 +31,59 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 @router.get("", response_model=GraphDataResponse)
 def get_user_graph(
     min_weight: int = 1,
+    category: str | None = None,
     db: DbSession = None,
     current_user: CurrentUser = None,
 ) -> dict:
-    """获取当前用户的图谱数据（节点 + 边），用于前端可视化。"""
-    return get_graph(db, current_user.id, min_weight=min_weight)
+    """获取当前用户的图谱数据（节点 + 边），用于前端可视化。
+
+    category：非 None 时仅返回该分类下的实体与关系。
+    """
+    return get_graph(db, current_user.id, min_weight=min_weight, category=category)
 
 
 @router.post("/build", response_model=GraphBuildResponse, status_code=status.HTTP_201_CREATED)
 def build_user_graph(
+    category: str | None = None,
     db: DbSession = None,
     current_user: CurrentUser = None,
 ) -> GraphBuildResponse:
-    """基于当前用户全部资料切片重新构建图谱。
+    """基于当前用户资料切片重新构建图谱。
 
     抽取 + 合并落库；返回构建后的实体/关系数量。
+    category：非 None 时仅基于该分类下的文档构建（并记录来源用于筛选）。
     """
-    # 收集该用户所有切片文本
+    # 收集该用户（可选：该分类下）文档的切片文本
+    doc_filter = [
+        DocumentChunk.user_id == current_user.id,
+        Document.user_id == current_user.id,
+    ]
+    if category and category != "全部":
+        doc_ids = [
+            s.document_id
+            for s in db.scalars(
+                select(EntitySource).where(
+                    EntitySource.user_id == current_user.id,
+                    EntitySource.category == category,
+                )
+            ).all()
+        ]
+        if not doc_ids:
+            # 退而求其次：按文档表 category 字段过滤
+            doc_ids = [
+                d.id
+                for d in db.scalars(
+                    select(Document).where(
+                        Document.user_id == current_user.id, Document.category == category
+                    )
+                ).all()
+            ]
+        doc_filter.append(DocumentChunk.document_id.in_(doc_ids))
+
     stmt = (
         select(DocumentChunk.content)
         .join(Document, Document.id == DocumentChunk.document_id)
-        .where(
-            DocumentChunk.user_id == current_user.id,
-            Document.user_id == current_user.id,
-        )
+        .where(*doc_filter)
     )
     chunks = list(db.scalars(stmt).all())
     if not chunks:
@@ -62,8 +92,17 @@ def build_user_graph(
             detail="暂无资料可用于构建图谱，请先到「知识库」上传文档。",
         )
 
-    build_graph(db, current_user.id, chunks, user=current_user)
-    graph = get_graph(db, current_user.id)
+    # 取这些切片所属文档 id，用于记录实体来源
+    doc_ids_stmt = (
+        select(DocumentChunk.document_id)
+        .join(Document, Document.id == DocumentChunk.document_id)
+        .where(*doc_filter)
+        .distinct()
+    )
+    document_ids = list(db.scalars(doc_ids_stmt).all())
+
+    build_graph(db, current_user.id, chunks, user=current_user, document_ids=document_ids)
+    graph = get_graph(db, current_user.id, category=category)
     return GraphBuildResponse(
         entity_count=graph["entity_count"],
         relation_count=graph["relation_count"],

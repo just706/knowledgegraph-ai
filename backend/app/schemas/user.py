@@ -23,6 +23,7 @@ class UserPublic(BaseModel):
     email: EmailStr
     display_name: str | None
     is_active: bool
+    role: str
 
 
 class Token(BaseModel):

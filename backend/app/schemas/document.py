@@ -7,6 +7,12 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
+class DocumentCreate(BaseModel):
+    """上传资料时可选的元信息（如分类）。"""
+
+    category: str | None = None
+
+
 class DocumentPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -16,7 +22,10 @@ class DocumentPublic(BaseModel):
     file_type: str
     file_size: int
     chunk_count: int
+    category: str
     status: str
+    graph_status: str
+    graph_error: str | None
     created_at: datetime
 
 

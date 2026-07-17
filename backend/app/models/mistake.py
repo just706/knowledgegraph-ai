@@ -27,6 +27,14 @@ class Mistake(Base):
     subject: Mapped[str] = mapped_column(String(64), default="")         # 学科/主题标签
     mastered: Mapped[bool] = mapped_column(Boolean, default=False)       # 是否已掌握
     review_count: Mapped[int] = mapped_column(Integer, default=0)        # 复习次数
+    # 间隔重复（Anki 式）复习计划字段
+    review_stage: Mapped[int] = mapped_column(Integer, default=0)        # 0=未安排；1/2/3=复习轮次
+    next_review_at: Mapped[datetime | None] = mapped_column(            # 下次可复习时间
+        DateTime, default=None, nullable=True
+    )
+    last_review_at: Mapped[datetime | None] = mapped_column(            # 最近一次复习确认时间
+        DateTime, default=None, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

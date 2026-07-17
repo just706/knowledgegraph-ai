@@ -20,6 +20,8 @@ const loading = ref(false)
 const building = ref(false)
 const search = ref('')
 const minWeight = ref(1)
+const category = ref('全部')
+const categoryOptions = ['全部', '数学', '语文', '英语', '物理', '化学', '生物', '历史', '政治', '计算机', '未分类']
 
 // 手动关联相关状态
 const linkMode = ref(false) // 是否处于"关联模式"
@@ -49,7 +51,7 @@ const isEmpty = computed(() => graphData.value && graphData.value.nodes.length =
 async function loadGraph() {
   loading.value = true
   try {
-    const data = await getGraph(minWeight.value)
+    const data = await getGraph(minWeight.value, category.value === '全部' ? undefined : category.value)
     graphData.value = data
     renderGraph(data)
   } catch {
@@ -212,7 +214,7 @@ async function confirmLink() {
 async function rebuild() {
   building.value = true
   try {
-    const res = await buildGraph()
+    const res = await buildGraph(category.value === '全部' ? undefined : category.value)
     ElMessage.success(res.message + '（你的手动标注已保留）')
     await loadGraph()
   } catch {
@@ -300,6 +302,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="graph-toolbar">
+      <el-select v-model="category" style="width: 120px" @change="loadGraph">
+        <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
+      </el-select>
+
       <el-input
         v-model="search"
         placeholder="搜索实体（如：卷积神经网络）"

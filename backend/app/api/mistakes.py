@@ -11,6 +11,7 @@ from app.schemas.mistake import (
     MistakeCreate,
     MistakeExplainResponse,
     MistakeOut,
+    MistakeReviewRequest,
     MistakeUpdate,
     WeaknessAnalysisResponse,
 )
@@ -94,6 +95,26 @@ def explain_mistake(
         return svc.explain_mistake(db, current_user.id, mistake_id, user=current_user)
     except LookupError:
         raise HTTPException(status_code=404, detail="错题不存在")
+
+
+@router.post("/{mistake_id}/review", response_model=MistakeOut)
+def review_mistake(
+    mistake_id: int,
+    payload: MistakeReviewRequest,
+    db: DbSession = None,
+    current_user: CurrentUser = None,
+) -> Mistake:
+    """间隔重复复习：schedule=开始复习（进入计划）；confirm=到期确认答对。"""
+    try:
+        if payload.action == "confirm":
+            return svc.confirm_review(db, current_user.id, mistake_id)
+        return svc.schedule_review(db, current_user.id, mistake_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="错题不存在")
+    except ValueError as e:
+        if str(e) == "NOT_DUE":
+            raise HTTPException(status_code=409, detail="尚未到复习时间，不能提前确认掌握")
+        raise
 
 
 @router.post("/analyze-weakness", response_model=WeaknessAnalysisResponse)

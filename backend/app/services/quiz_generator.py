@@ -27,6 +27,7 @@ from app.models.mistake import Mistake
 from app.models.quiz import Quiz
 from app.schemas.quiz import QuizAnswerItem, QuizQuestion
 from app.services.llm_client import chat_completion, is_llm_enabled
+from app.services import mistake_service
 
 
 # ------------------------- 数据收集 -------------------------
@@ -361,6 +362,18 @@ def grade_quiz(db: Session, user_id: int, answers: list[QuizAnswerItem]) -> dict
     wrong = total - correct
     score = round(correct / total * 100) if total else 0
 
+    # 答对的题：若其题目文本命中用户正在复习的错题，自动推进间隔复习进度
+    advanced_mistake_ids: list[int] = []
+    for a in answers:
+        if _is_correct(a.user_answer, a.answer, a.q_type if hasattr(a, "q_type") else ""):
+            advanced_mistake_ids.extend(
+                mistake_service.advance_on_correct(
+                    db, user_id, a.question, subject=getattr(a, "subject", None)
+                )
+            )
+    # 去重
+    advanced_mistake_ids = list(dict.fromkeys(advanced_mistake_ids))
+
     # 答错的题回写错题本
     for w in wrong_items:
         db.add(
@@ -382,6 +395,7 @@ def grade_quiz(db: Session, user_id: int, answers: list[QuizAnswerItem]) -> dict
         "wrong": wrong,
         "score": score,
         "wrong_items": wrong_items,
+        "advanced_mistake_ids": advanced_mistake_ids,
     }
 
 

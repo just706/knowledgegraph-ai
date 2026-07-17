@@ -7,6 +7,8 @@ import { getMindmap, type MindNode, type MindmapData } from '@/api/mindmap'
 const router = useRouter()
 const data = ref<MindmapData | null>(null)
 const loading = ref(false)
+const category = ref('全部')
+const categoryOptions = ['全部', '数学', '语文', '英语', '物理', '化学', '生物', '历史', '政治', '计算机', '未分类']
 
 // 可折叠状态：以实体 id 或路径名为 key，记录是否展开
 const collapsed = ref<Set<string>>(new Set())
@@ -16,7 +18,7 @@ const selectedId = ref<number | null>(null)
 async function load() {
   loading.value = true
   try {
-    data.value = await getMindmap()
+    data.value = await getMindmap(category.value === '全部' ? undefined : category.value)
   } catch {
     // 拦截器已提示
   } finally {
@@ -63,6 +65,9 @@ onMounted(load)
         <p class="sub">基于你的知识库自动生成的学习地图，点击节点可层层展开。</p>
       </div>
       <div class="actions">
+        <el-select v-model="category" style="width: 120px" @change="load">
+          <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
+        </el-select>
         <el-tag v-if="data" :type="data.mode === 'llm' ? 'success' : 'info'" size="small">
           {{ data.mode === 'llm' ? 'AI 语义编排' : '本地自动编排' }}
         </el-tag>

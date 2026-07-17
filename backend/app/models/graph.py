@@ -65,3 +65,28 @@ class Relation(Base):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Relation {self.source_id}-{self.relation}->{self.target_id}>"
+
+
+class EntitySource(Base):
+    """实体来源映射：记录每个实体来自哪篇文档（及该文档分类）。
+
+    用于按分类筛选图谱/导图，避免多学科混在一起。
+    一个实体可来自多篇文档（合并构建时），故单独建表而非在 Entity 上挂单列。
+    """
+
+    __tablename__ = "entity_sources"
+    __table_args__ = (
+        UniqueConstraint("entity_id", "document_id", name="uq_entity_doc"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), index=True, nullable=False
+    )
+    entity_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(64), default="未分类")

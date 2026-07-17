@@ -10,6 +10,7 @@ import {
   deleteMistake,
   explainMistake,
   analyzeWeakness,
+  reviewMistake,
   type MistakeItem,
   type MistakeCreate,
 } from '@/api/mistake'
@@ -128,6 +129,49 @@ async function toggleMastered(item: MistakeItem) {
   await fetchMistakes()
 }
 
+// 间隔重复：是否到达可确认复习的时间
+function isDue(item: MistakeItem): boolean {
+  if (!item.next_review_at) return false
+  return new Date(item.next_review_at).getTime() <= Date.now()
+}
+
+// 复习阶段文案
+function reviewStageText(item: MistakeItem): string {
+  if (item.mastered) return '已掌握'
+  if (!item.review_stage || item.review_stage <= 0) return '—'
+  if (item.review_stage > 3) return '复习完成'
+  return `第 ${item.review_stage} 轮`
+}
+
+// 下次复习时间格式化
+function nextReviewText(item: MistakeItem): string {
+  if (item.mastered || !item.next_review_at) return '—'
+  const d = new Date(item.next_review_at)
+  const due = isDue(item)
+  return (due ? '可复习 ' : '待 ') + d.toLocaleString()
+}
+
+async function startReview(item: MistakeItem) {
+  await reviewMistake(item.id, 'schedule')
+  ElMessage.success('已进入间隔复习计划（1 天后可确认）')
+  await fetchMistakes()
+}
+
+async function confirmReview(item: MistakeItem) {
+  if (!isDue(item)) {
+    ElMessage.warning('尚未到复习时间，请耐心等待间隔到期后再确认')
+    return
+  }
+  const res = await reviewMistake(item.id, 'confirm')
+  if (res.mastered) {
+    ElMessage.success('连续间隔复习通过，已判定为真正掌握！')
+  } else {
+    const days = [0, 1, 3, 7][Math.min(res.review_stage, 3)] ?? 7
+    ElMessage.success(`复习已确认，下一轮间隔 ${days} 天`)
+  }
+  await fetchMistakes()
+}
+
 async function handleDelete(item: MistakeItem) {
   try {
     await ElMessageBox.confirm('确认删除这条错题？', '删除确认', { type: 'warning' })
@@ -226,12 +270,31 @@ onMounted(() => {
       <el-table-column label="复习" width="70" align="center">
         <template #default="{ row }">{{ row.review_count }}</template>
       </el-table-column>
+      <el-table-column label="间隔复习" width="200">
+        <template #default="{ row }">
+          <div v-if="!row.mastered" class="review-cell">
+            <span class="review-stage">{{ reviewStageText(row) }}</span>
+            <span class="muted review-next">{{ nextReviewText(row) }}</span>
+          </div>
+          <span v-else class="muted">已完成</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openExplain(row)">AI 解析</el-button>
-          <el-button link type="primary" @click="toggleMastered(row)">
-            {{ row.mastered ? '标未掌握' : '标记掌握' }}
-          </el-button>
+          <template v-if="!row.mastered">
+            <el-button
+              v-if="!row.review_stage || row.review_stage <= 0"
+              link type="success" @click="startReview(row)"
+            >开始复习</el-button>
+            <el-button
+              v-else
+              link type="success"
+              :disabled="!isDue(row)"
+              @click="confirmReview(row)"
+            >确认掌握</el-button>
+          </template>
+          <el-button v-else link type="primary" @click="toggleMastered(row)">标未掌握</el-button>
           <el-button link type="primary" @click="askAI(row)">追问</el-button>
           <el-button link type="info" @click="openEdit(row)">编辑</el-button>
           <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
@@ -316,6 +379,18 @@ onMounted(() => {
 }
 .muted {
   color: var(--color-text-secondary);
+}
+.review-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+.review-stage {
+  font-size: 13px;
+  font-weight: 500;
+}
+.review-next {
+  font-size: 12px;
 }
 .explain__q {
   font-size: 14px;

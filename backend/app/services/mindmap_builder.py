@@ -19,7 +19,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.graph import Entity, Relation
+from app.models.graph import Entity, EntitySource, Relation
 from app.services.llm_client import resolve_credential
 
 # 实体类型 → 思维导图分支名
@@ -95,7 +95,21 @@ def _select_roots(
     return top
 
 
-def _local_mindmap(db: Session, user_id: int) -> MindNode:
+def _category_entity_ids(db: Session, user_id: int, category: str | None) -> set[int] | None:
+    """返回该分类下的实体 id 集合；category 为 None 或 '全部' 时返回 None（不限制）。"""
+    if not category or category == "全部":
+        return None
+    return {
+        s.entity_id
+        for s in db.scalars(
+            select(EntitySource).where(
+                EntitySource.user_id == user_id, EntitySource.category == category
+            )
+        ).all()
+    }
+
+
+def _local_mindmap(db: Session, user_id: int, category: str | None = None) -> MindNode:
     """本地图算法生成思维导图树（单一中心主题 + 按类型分层的分支）。
 
     策略：
@@ -104,8 +118,15 @@ def _local_mindmap(db: Session, user_id: int) -> MindNode:
     3. 与中心主题有直接关系的实体，额外作为中心主题的"直接相关"子节点；
     4. 避免堆出庞大的"其他概念"分支。
     """
-    entities = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
-    relations = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
+    cat_ids = _category_entity_ids(db, user_id, category)
+    entities_all = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
+    entities = [e for e in entities_all if cat_ids is None or e.id in cat_ids]
+    relations_all = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
+    # 关系仅保留两端都在分类集合内的（无 cat_ids 则全保留）
+    if cat_ids is not None:
+        relations = [r for r in relations_all if r.source_id in cat_ids and r.target_id in cat_ids]
+    else:
+        relations = relations_all
 
     if not entities:
         return MindNode(name="我的学习地图", kind="root", children=[])
@@ -180,7 +201,7 @@ def _entity_name(db: Session, entity_id: int) -> str:
     return e.name if e else "?"
 
 
-def _llm_mindmap(db: Session, user_id: int, user=None) -> MindNode | None:
+def _llm_mindmap(db: Session, user_id: int, user=None, category: str | None = None) -> MindNode | None:
     """LLM 增强：生成更语义化的学习路径树。无 key 或失败返回 None。
 
     复用统一 chat_completion 封装，自动适配 OpenAI / Anthropic / Gemini 等多厂商。
@@ -189,8 +210,14 @@ def _llm_mindmap(db: Session, user_id: int, user=None) -> MindNode | None:
     if cred is None:
         return None
 
-    entities = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
-    relations = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
+    cat_ids = _category_entity_ids(db, user_id, category)
+    entities_all = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
+    entities = [e for e in entities_all if cat_ids is None or e.id in cat_ids]
+    relations_all = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
+    if cat_ids is not None:
+        relations = [r for r in relations_all if r.source_id in cat_ids and r.target_id in cat_ids]
+    else:
+        relations = relations_all
     if not entities:
         return MindNode(name="我的学习地图", kind="root", children=[])
 
@@ -242,16 +269,17 @@ def _dict_to_mind(data: dict) -> MindNode:
     return node
 
 
-def get_mindmap(db: Session, user_id: int, user=None) -> dict:
+def get_mindmap(db: Session, user_id: int, user=None, category: str | None = None) -> dict:
     """返回当前用户的思维导图树。
 
     优先尝试 LLM 生成（按其自有 key 计费）；失败或无 key 时回退到本地图算法。
     同时返回生成模式（llm / local）便于前端提示。
+    category：非 None 时仅基于该分类的资料生成导图。
     """
     mode = "local"
-    tree = _llm_mindmap(db, user_id, user=user)
+    tree = _llm_mindmap(db, user_id, user=user, category=category)
     if tree is None:
-        tree = _local_mindmap(db, user_id)
+        tree = _local_mindmap(db, user_id, category=category)
     else:
         mode = "llm"
 

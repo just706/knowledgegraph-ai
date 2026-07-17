@@ -8,6 +8,9 @@ export interface DocumentItem {
   file_size: number
   chunk_count: number
   status: string
+  category: string
+  graph_status: string
+  graph_error: string | null
   created_at: string
 }
 
@@ -23,9 +26,10 @@ export interface DocumentDetail extends DocumentItem {
   chunks: DocumentChunk[]
 }
 
-export function uploadDocument(file: File): Promise<DocumentItem> {
+export function uploadDocument(file: File, category?: string): Promise<DocumentItem> {
   const form = new FormData()
   form.append('file', file)
+  if (category) form.append('category', category)
   return request.post('/documents', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })

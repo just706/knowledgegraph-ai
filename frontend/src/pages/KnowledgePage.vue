@@ -18,8 +18,14 @@ const loading = ref(false)
 const uploading = ref(false)
 const drawerVisible = ref(false)
 const currentDetail = ref<DocumentDetail | null>(null)
+const uploadCategory = ref('未分类')
 
 const fileTypes = '.txt,.md,.markdown,.pdf'
+
+// 分类下拉选项（含"未分类"，及自动推断用的学科）
+const categoryOptions = [
+  '未分类', '数学', '语文', '英语', '物理', '化学', '生物', '历史', '政治', '计算机',
+]
 
 async function fetchDocuments() {
   loading.value = true
@@ -35,8 +41,14 @@ async function handleUpload(options: { file: File }) {
   if (!file) return
   uploading.value = true
   try {
-    await uploadDocument(file)
-    ElMessage.success(`「${file.name}」上传并解析成功`)
+    const doc = await uploadDocument(file, uploadCategory.value === '未分类' ? undefined : uploadCategory.value)
+    if (doc.graph_status === 'failed') {
+      ElMessage.warning(
+        `「${file.name}」上传并解析成功，但知识图谱构建失败：${doc.graph_error || '未知错误'}。可前往「知识图谱」页手动重新构建。`,
+      )
+    } else {
+      ElMessage.success(`「${file.name}」上传成功（分类：${doc.category}），知识图谱已自动构建`)
+    }
     await fetchDocuments()
   } catch {
     // 错误已由拦截器统一提示
@@ -94,11 +106,19 @@ onMounted(fetchDocuments)
           {{ uploading ? '解析中…' : '上传资料' }}
         </el-button>
       </el-upload>
+      <el-select v-model="uploadCategory" style="width: 130px; margin-left: 10px">
+        <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
+      </el-select>
     </div>
 
     <el-table v-loading="loading" :data="documents" empty-text="还没有资料，点击右上角上传" style="width: 100%">
       <el-table-column prop="title" label="标题" min-width="180" />
       <el-table-column prop="file_type" label="类型" width="90" />
+      <el-table-column label="分类" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.category === '未分类' ? 'info' : 'primary'" size="small">{{ row.category }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="大小" width="110">
         <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
       </el-table-column>
@@ -106,6 +126,19 @@ onMounted(fetchDocuments)
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="row.status === 'ready' ? 'success' : 'warning'">{{ row.status }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="图谱" width="110">
+        <template #default="{ row }">
+          <el-tag
+            v-if="row.graph_status === 'success'"
+            type="success"
+          >已构建</el-tag>
+          <el-tag
+            v-else-if="row.graph_status === 'failed'"
+            type="danger"
+          >构建失败</el-tag>
+          <el-tag v-else type="info">待构建</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="上传时间" min-width="170">

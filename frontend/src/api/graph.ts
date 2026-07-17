@@ -30,14 +30,14 @@ export interface GraphBuildResult {
   message: string
 }
 
-/** 获取当前用户的图谱数据（节点 + 边）。 */
-export function getGraph(minWeight = 1): Promise<GraphData> {
-  return request.get('/graph', { params: { min_weight: minWeight } })
+/** 获取当前用户的图谱数据（节点 + 边）。category 可选，按分类筛选。 */
+export function getGraph(minWeight = 1, category?: string): Promise<GraphData> {
+  return request.get('/graph', { params: { min_weight: minWeight, category } })
 }
 
-/** 基于用户全部资料重新构建图谱。 */
-export function buildGraph(): Promise<GraphBuildResult> {
-  return request.post('/graph/build')
+/** 基于用户全部资料重新构建图谱。category 可选，仅构建该分类。 */
+export function buildGraph(category?: string): Promise<GraphBuildResult> {
+  return request.post('/graph/build', null, { params: { category } })
 }
 
 /** 清空当前用户的图谱。 */

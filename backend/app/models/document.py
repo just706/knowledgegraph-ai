@@ -23,7 +23,12 @@ class Document(Base):
     file_type: Mapped[str] = mapped_column(String(32), nullable=False)  # txt / md / pdf
     file_size: Mapped[int] = mapped_column(Integer, default=0)  # 字节
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 分类（学科/资料类别）：上传时可选，缺省按标题自动推断
+    category: Mapped[str] = mapped_column(String(64), default="未分类", index=True)
     status: Mapped[str] = mapped_column(String(32), default="ready")  # ready / processing / failed
+    # 图谱构建状态：pending / success / failed（不再静默吞异常，便于前端反馈）
+    graph_status: Mapped[str] = mapped_column(String(32), default="pending")
+    graph_error: Mapped[str | None] = mapped_column(Text, nullable=True)  # 图谱构建失败的原因
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

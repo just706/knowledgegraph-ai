@@ -3,7 +3,9 @@
 MVP 优先：先定义最小用户实体，后续按迁移管理扩展（AI 宪法第五章：结构修改必须通过迁移）。
 用户数据隔离通过 user_id 行级隔离实现。
 """
-from sqlalchemy import String
+from datetime import datetime, timezone
+
+from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.crypto import decrypt_field, encrypt_field
@@ -18,6 +20,14 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
+    # 角色：admin（管理员）| user（普通用户），默认 user
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="user", server_default="user")
+    # 注册时间（UTC），首次创建时自动填充
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
 
     # 用户私有 LLM 凭证（密文存储于 _llm_api_key，明文经属性透明解密）
     # 仅当用户填写后，LLM 调用才扣该用户的额度；否则回退到全局 .env 兜底 key。

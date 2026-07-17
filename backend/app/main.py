@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin import router as admin_router
 from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.api.graph import router as graph_router
@@ -29,22 +30,69 @@ async def lifespan(_app: FastAPI):
     # 兼容已存在的 SQLite 库：create_all 不会给旧表追加新列，这里幂等补列。
     # 后续正式迁移工具就绪后可移除本段。
     _migrate_add_user_llm_columns(engine)
+    _migrate_add_document_graph_columns(engine)
+    _migrate_add_document_category_column(engine)
+    _migrate_add_mistake_review_columns(engine)
     yield
 
 
 def _migrate_add_user_llm_columns(engine) -> None:
-    """为 users 表补齐 llm_api_key / llm_base_url / llm_model 三列（若不存在）。"""
+    """为 users 表补齐 llm_api_key / llm_base_url / llm_model / role / created_at 列（若不存在）。"""
     expected = {
         "llm_api_key": "VARCHAR(512)",
         "llm_base_url": "VARCHAR(255)",
         "llm_model": "VARCHAR(128)",
         "llm_provider": "VARCHAR(64)",
+        "role": "VARCHAR(16) DEFAULT 'user'",
+        "created_at": "DATETIME",
     }
     with engine.connect() as conn:
         existing = {row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(users)"))}
         for col, col_type in expected.items():
             if col not in existing:
                 conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+        conn.commit()
+
+
+def _migrate_add_document_graph_columns(engine) -> None:
+    """为 documents 表补齐 graph_status / graph_error 列（若不存在）。"""
+    expected = {
+        "graph_status": "VARCHAR(32) DEFAULT 'pending'",
+        "graph_error": "TEXT",
+    }
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(documents)"))}
+        for col, col_type in expected.items():
+            if col not in existing:
+                conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE documents ADD COLUMN {col} {col_type}"))
+        conn.commit()
+
+
+def _migrate_add_document_category_column(engine) -> None:
+    """为 documents 表补齐 category 列（若不存在）。"""
+    expected = {
+        "category": "VARCHAR(64) DEFAULT '未分类'",
+    }
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(documents)"))}
+        for col, col_type in expected.items():
+            if col not in existing:
+                conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE documents ADD COLUMN {col} {col_type}"))
+        conn.commit()
+
+
+def _migrate_add_mistake_review_columns(engine) -> None:
+    """为 mistakes 表补齐间隔重复复习字段（若不存在）。"""
+    expected = {
+        "review_stage": "INTEGER DEFAULT 0",
+        "next_review_at": "DATETIME",
+        "last_review_at": "DATETIME",
+    }
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(__import__("sqlalchemy").text("PRAGMA table_info(mistakes)"))}
+        for col, col_type in expected.items():
+            if col not in existing:
+                conn.execute(__import__("sqlalchemy").text(f"ALTER TABLE mistakes ADD COLUMN {col} {col_type}"))
         conn.commit()
 
 
@@ -77,4 +125,5 @@ app.include_router(mindmap_router, prefix=settings.API_V1_PREFIX)
 app.include_router(mistakes_router, prefix=settings.API_V1_PREFIX)
 app.include_router(quiz_router, prefix=settings.API_V1_PREFIX)
 app.include_router(stats_router, prefix=settings.API_V1_PREFIX)
+app.include_router(admin_router, prefix=settings.API_V1_PREFIX)
 

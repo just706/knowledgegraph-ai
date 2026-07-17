@@ -12,6 +12,11 @@ class MistakeCreate(BaseModel):
     subject: str = Field(default="", max_length=64)
 
 
+class MistakeReviewRequest(BaseModel):
+    """复习动作：schedule=开始复习（进入间隔计划）；confirm=确认本次复习已答对。"""
+    action: str = "schedule"  # schedule | confirm
+
+
 class MistakeUpdate(BaseModel):
     question: str | None = Field(default=None, max_length=4000)
     my_answer: str | None = Field(default=None, max_length=4000)
@@ -19,6 +24,9 @@ class MistakeUpdate(BaseModel):
     error_reason: str | None = Field(default=None, max_length=4000)
     subject: str | None = Field(default=None, max_length=64)
     mastered: bool | None = None
+    review_stage: int | None = None
+    next_review_at: datetime | None = None
+    last_review_at: datetime | None = None
 
 
 class MistakeOut(BaseModel):
@@ -33,6 +41,9 @@ class MistakeOut(BaseModel):
     subject: str
     mastered: bool
     review_count: int
+    review_stage: int
+    next_review_at: datetime | None
+    last_review_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

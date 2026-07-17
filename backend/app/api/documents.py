@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import CurrentUser, DbSession
 from app.config import settings
 from app.models.document import Document, DocumentChunk
-from app.schemas.document import DocumentDetail, DocumentPublic
+from app.schemas.document import DocumentCreate, DocumentDetail, DocumentPublic
 from app.services.graph_builder import build_graph
 from app.services.parser import (
     IMAGE_TYPES,
@@ -24,16 +24,43 @@ from app.services.splitter import split_text
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
+# 常见学科关键词（用于从文件名/标题自动推断分类）
+_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "数学": ["数学", "高数", "微积分", "积分", "代数", "几何", "线性", "概率", "统计", "方程", "函数"],
+    "语文": ["古诗", "古文", "诗词", "文学", "语文", "鉴赏", "文言文", "散文", "小说"],
+    "英语": ["英语", "english", "vocabulary", "词汇", "语法", "四级", "六级", "考研英语"],
+    "物理": ["物理", "力学", "电磁", "量子", "热力学", "光学", "相对论"],
+    "化学": ["化学", "有机", "无机", "反应", "分子", "元素", "化学键"],
+    "生物": ["生物", "细胞", "基因", "dna", "生态", "遗传", "进化"],
+    "历史": ["历史", "朝代", "古代史", "近代史", "世界史", "战争", "革命"],
+    "政治": ["政治", "思想", "哲学", "马克思主义", "经济学", "法律", "宪法"],
+    "计算机": ["git", "python", "java", "编程", "代码", "算法", "前端", "后端", "数据库", "linux"],
+}
+
+
+def _infer_category(title: str) -> str:
+    """从文件名/标题推断分类；命中多个时取首个匹配，否则返回'未分类'。"""
+    low = title.lower()
+    for cat, kws in _CATEGORY_KEYWORDS.items():
+        if any(kw.lower() in low for kw in kws):
+            return cat
+    return "未分类"
+
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.post("", response_model=DocumentPublic, status_code=status.HTTP_201_CREATED)
 def upload_document(
     file: UploadFile = File(...),
+    category: str | None = None,
     db: DbSession = None,
     current_user: CurrentUser = None,
 ) -> Document:
-    """上传资料：解析 + 切片 + 入库（仅当前用户可见）。"""
+    """上传资料：解析 + 切片 + 入库（仅当前用户可见）。
+
+    category 可选；缺省时按文件名/标题自动推断。
+    """
     raw = file.file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="文件为空")
@@ -47,6 +74,9 @@ def upload_document(
             status_code=415,
             detail=f"不支持的文件类型，仅支持：{', '.join(sorted(SUPPORTED_TYPES))}",
         )
+
+    # 分类：优先用前端传入，否则按文件名/标题自动推断
+    doc_category = category or _infer_category(file.filename or "")
 
     # 图片/扫描件需要 OCR：若环境未启用 OCR，直接拒绝并提示
     if file_type in IMAGE_TYPES and not settings.OCR_ENABLED:
@@ -74,6 +104,7 @@ def upload_document(
         file_type=file_type,
         file_size=len(raw),
         chunk_count=len(chunks),
+        category=doc_category,
         status="ready",
     )
     db.add(doc)
@@ -92,7 +123,9 @@ def upload_document(
     db.commit()
     db.refresh(doc)
 
-    # Phase 5：上传后基于全部资料自动增量构建图谱（失败不影响上传结果）
+    # Phase 5：上传后基于全部资料自动增量构建图谱
+    # 图谱构建失败不再静默吞掉——记录 graph_status/graph_error 回写数据库，
+    # 但保持上传本身成功返回，前端据此提示用户图谱构建情况。
     try:
         all_chunks = [
             c.content
@@ -101,9 +134,17 @@ def upload_document(
             ).all()
         ]
         if all_chunks:
-            build_graph(db, current_user.id, all_chunks, user=current_user)
-    except Exception:  # noqa: BLE001 图谱构建异常不应阻塞文档上传
+            build_graph(
+                db, current_user.id, all_chunks, user=current_user, document_ids=[doc.id]
+            )
+        doc.graph_status = "success"
+        doc.graph_error = None
+    except Exception as exc:  # noqa: BLE001 图谱异常记录状态，不阻塞上传
         db.rollback()
+        doc.graph_status = "failed"
+        doc.graph_error = f"图谱构建失败：{exc}"
+    db.commit()
+    db.refresh(doc)
 
     return doc
 

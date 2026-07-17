@@ -5,6 +5,7 @@ export interface UserPublic {
   email: string
   display_name: string | null
   is_active: boolean
+  role: string
 }
 
 export interface Token {

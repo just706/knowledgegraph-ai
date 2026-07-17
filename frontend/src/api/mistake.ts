@@ -10,6 +10,9 @@ export interface MistakeItem {
   subject: string
   mastered: boolean
   review_count: number
+  review_stage: number
+  next_review_at: string | null
+  last_review_at: string | null
   created_at: string
   updated_at: string
 }
@@ -72,4 +75,8 @@ export function explainMistake(id: number): Promise<MistakeExplain> {
 
 export function analyzeWeakness(): Promise<WeaknessAnalysis> {
   return request.post('/mistakes/analyze-weakness')
+}
+
+export function reviewMistake(id: number, action: 'schedule' | 'confirm' = 'schedule'): Promise<MistakeItem> {
+  return request.post(`/mistakes/${id}/review`, { action })
 }

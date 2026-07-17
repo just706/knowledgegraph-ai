@@ -1,8 +1,9 @@
 """ORM 模型包。"""
 from app.models.chat import ChatMessage, ChatSession
 from app.models.document import Document, DocumentChunk
-from app.models.graph import Entity, Relation
+from app.models.graph import Entity, EntitySource, Relation
 from app.models.mistake import Mistake
+from app.models.quiz import Quiz
 from app.models.user import User
 
 __all__ = [
@@ -13,4 +14,6 @@ __all__ = [
     "Relation",
     "ChatSession",
     "ChatMessage",
+    "Mistake",
+    "Quiz",
 ]

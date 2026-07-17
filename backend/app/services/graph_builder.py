@@ -11,22 +11,78 @@ from typing import Iterable
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.graph import Entity, Relation
+from app.models.document import Document
+from app.models.graph import Entity, EntitySource, Relation
 from app.services.graph_extractor import GraphData, extract_graph
 
 # 用户可标注的关系类型
 MANUAL_RELATION_TYPES = ["属于", "包含", "相关", "对比", "因果", "举例", "用于", "其他"]
 
 
-def build_graph(db: Session, user_id: int, chunks: Iterable[str], user=None) -> GraphData:
+def build_graph(
+    db: Session,
+    user_id: int,
+    chunks: Iterable[str],
+    user=None,
+    document_ids: list[int] | None = None,
+) -> GraphData:
     """抽取并落库用户图谱；返回本次构建的图数据。
 
     采用"合并"策略：已存在同名实体则累加 mention_count；
     已存在相同三元组则累加 weight，避免重复构建时数据膨胀。
     仅处理 source='auto' 的关系，用户手动标注(manual)的关系始终保留。
     user 用于解析其 LLM 凭证（图谱语义抽取按其自有 key 计费）。
+    document_ids 用于逐文档抽取并记录实体来源（分类筛选用）；
+    为空则按合并 chunks 抽取（不记录精确来源）。
+
+    设计：当提供 document_ids 时，逐文档独立抽取再合并，确保实体来源
+    能精确归属到对应文档的分类（避免全量合并导致所有实体被标成全部分类）。
     """
-    data = extract_graph(chunks, user=user)
+    # 逐文档抽取（若有 document_ids），否则整体抽取
+    if document_ids:
+        from app.models.document import DocumentChunk
+
+        merged = GraphData()
+        doc_category: dict[int, str] = {}
+        for d in db.scalars(
+            select(Document).where(Document.id.in_(document_ids), Document.user_id == user_id)
+        ).all():
+            doc_category[d.id] = d.category
+            doc_chunks = [
+                c.content
+                for c in db.scalars(
+                    select(DocumentChunk).where(
+                        DocumentChunk.document_id == d.id,
+                        DocumentChunk.user_id == user_id,
+                    )
+                ).all()
+            ]
+            if not doc_chunks:
+                continue
+            part = extract_graph(doc_chunks, user=user)
+            for ent in part.entities:
+                found = next((m for m in merged.entities if m.name == ent.name), None)
+                if found:
+                    found.mentions += ent.mentions
+                else:
+                    merged.entities.append(ent)
+            for rel in part.relations:
+                dup = next(
+                    (
+                        r
+                        for r in merged.relations
+                        if r.source == rel.source and r.target == rel.target and r.relation == rel.relation
+                    ),
+                    None,
+                )
+                if dup:
+                    dup.weight += rel.weight
+                else:
+                    merged.relations.append(rel)
+        data = merged
+    else:
+        data = extract_graph(chunks, user=user)
+
     if not data.entities:
         return data
 
@@ -49,6 +105,45 @@ def build_graph(db: Session, user_id: int, chunks: Iterable[str], user=None) -> 
             db.add(e)
             db.flush()  # 拿到 id
             name_to_entity[ent.name] = e
+
+    # 记录实体来源（分类筛选用），幂等忽略重复。
+    # 逐文档抽取时，按文档映射分类；整体抽取(document_ids 为空)则不记录来源。
+    if document_ids:
+        existing_src = {
+            (s.entity_id, s.document_id)
+            for s in db.scalars(
+                select(EntitySource).where(
+                    EntitySource.user_id == user_id,
+                    EntitySource.document_id.in_(document_ids),
+                )
+            ).all()
+        }
+        for did in document_ids:
+            cat = doc_category.get(did, "未分类")
+            doc_chunks = [
+                c.content
+                for c in db.scalars(
+                    select(DocumentChunk).where(
+                        DocumentChunk.document_id == did, DocumentChunk.user_id == user_id
+                    )
+                ).all()
+            ]
+            if not doc_chunks:
+                continue
+            part = extract_graph(doc_chunks, user=user)
+            for ent in part.entities:
+                e = name_to_entity.get(ent.name)
+                if e is None:
+                    continue
+                if (e.id, did) not in existing_src:
+                    db.add(
+                        EntitySource(
+                            user_id=user_id,
+                            entity_id=e.id,
+                            document_id=did,
+                            category=cat,
+                        )
+                    )
 
     # 关系合并（仅 auto 来源；manual 由用户维护）
     existing_rels = {
@@ -134,13 +229,31 @@ def delete_relation(db: Session, user_id: int, relation_id: int) -> None:
     db.commit()
 
 
-def get_graph(db: Session, user_id: int, min_weight: int = 1) -> dict:
+def get_graph(db: Session, user_id: int, min_weight: int = 1, category: str | None = None) -> dict:
     """返回可视化所需的图数据（节点 + 边）。
 
     节点：实体（含 label、mentions、degree）。
     边：关系（含 relation 类型、weight）。
+    category：非 None 时仅返回来源属于该分类的实体及其关系。
     """
+    # 分类过滤：先查出该分类下的实体 id 集合
+    if category and category != "全部":
+        cat_entity_ids = {
+            s.entity_id
+            for s in db.scalars(
+                select(EntitySource).where(
+                    EntitySource.user_id == user_id, EntitySource.category == category
+                )
+            ).all()
+        }
+        if not cat_entity_ids:
+            return {"nodes": [], "edges": [], "entity_count": 0, "relation_count": 0}
+    else:
+        cat_entity_ids = None
+
     entities = db.scalars(select(Entity).where(Entity.user_id == user_id)).all()
+    if cat_entity_ids is not None:
+        entities = [e for e in entities if e.id in cat_entity_ids]
     relations = db.scalars(select(Relation).where(Relation.user_id == user_id)).all()
 
     degree: dict[int, int] = defaultdict(int)

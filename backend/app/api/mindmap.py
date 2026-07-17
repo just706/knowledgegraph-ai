@@ -14,9 +14,13 @@ router = APIRouter(prefix="/mindmap", tags=["mindmap"])
 
 @router.get("", response_model=MindmapResponse)
 def read_mindmap(
+    category: str | None = None,
     db: DbSession = None,
     current_user: CurrentUser = None,
 ) -> MindmapResponse:
-    """返回当前用户的思维导图（由知识图谱投影生成）。"""
-    data = get_mindmap(db, current_user.id, user=current_user)
+    """返回当前用户的思维导图（由知识图谱投影生成）。
+
+    category：非 None 时仅基于该分类的资料生成导图。
+    """
+    data = get_mindmap(db, current_user.id, user=current_user, category=category)
     return MindmapResponse(**data)

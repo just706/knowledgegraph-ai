@@ -18,6 +18,7 @@ const menus = [
   { path: '/mistakes', title: '错题本' },
   { path: '/center', title: '学习中心' },
   { path: '/settings', title: 'API 设置' },
+  { path: '/admin', title: '后台管理', adminOnly: true },
 ]
 
 onMounted(async () => {
@@ -41,9 +42,14 @@ function handleLogout() {
     <el-aside width="200px" class="layout__aside">
       <div class="layout__logo">KnowledgeGraph AI</div>
       <el-menu :default-active="activeMenu" router class="layout__menu">
-        <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
-          {{ m.title }}
-        </el-menu-item>
+        <template v-for="m in menus" :key="m.path">
+          <el-menu-item
+            v-if="!m.adminOnly || auth.user?.role === 'admin'"
+            :index="m.path"
+          >
+            {{ m.title }}
+          </el-menu-item>
+        </template>
       </el-menu>
     </el-aside>
     <el-container>

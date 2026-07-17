@@ -28,6 +28,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'mistakes', name: 'mistakes', component: () => import('@/pages/MistakePage.vue'), meta: { title: '错题本' } },
       { path: 'center', name: 'center', component: () => import('@/pages/LearningCenterPage.vue'), meta: { title: '学习中心' } },
       { path: 'settings', name: 'settings', component: () => import('@/pages/SettingsPage.vue'), meta: { title: 'API 设置' } },
+      { path: 'admin', name: 'admin', component: () => import('@/pages/AdminPage.vue'), meta: { title: '后台管理', admin: true } },
     ],
   },
 ]
@@ -46,6 +47,10 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if ((to.name === 'login' || to.name === 'register') && auth.isLoggedIn) {
+    return { name: 'home' }
+  }
+  // 后台管理页面仅管理员可访问
+  if (to.meta.admin && auth.user && auth.user.role !== 'admin') {
     return { name: 'home' }
   }
   return true

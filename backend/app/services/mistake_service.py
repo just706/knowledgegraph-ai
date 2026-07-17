@@ -10,11 +10,18 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.mistake import Mistake
 from app.services.llm_client import chat_completion, is_llm_enabled
+
+# 间隔重复（Anki 式）间隔天数：stage 1/2/3 分别对应 +1/+3/+7 天；
+# stage>=3 且确认答对即判定真正掌握。
+_REVIEW_INTERVALS = {1: 1, 2: 3, 3: 7}
+_MAX_STAGE = 3
 
 
 # ------------------------- CRUD -------------------------
@@ -66,6 +73,96 @@ def list_subjects(db: Session, user_id: int) -> list[str]:
         .distinct()
     ).all()
     return [r for r in rows if r]
+
+
+# ------------------------- 间隔重复（掌握判定） -------------------------
+def due_mistakes(db: Session, user_id: int) -> list[Mistake]:
+    """返回当前已到复习时间、可确认掌握的错题（复习计划进行中且未超期等待）。"""
+    now = datetime.utcnow()
+    stmt = (
+        select(Mistake)
+        .where(
+            Mistake.user_id == user_id,
+            Mistake.mastered.is_(False),
+            Mistake.review_stage > 0,
+            Mistake.next_review_at <= now,
+        )
+        .order_by(Mistake.next_review_at.asc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def schedule_review(db: Session, user_id: int, mistake_id: int) -> Mistake:
+    """开始复习：进入间隔计划（stage=1，下次复习 = 现在 +1 天）。
+
+    不直接置 mastered，需经过间隔计划、到期确认答对后才真正掌握。
+    """
+    m = get_mistake(db, user_id, mistake_id)
+    if m is None:
+        raise LookupError("错题不存在")
+    now = datetime.utcnow()
+    m.review_stage = 1
+    m.last_review_at = now
+    m.next_review_at = now + timedelta(days=_REVIEW_INTERVALS.get(1, 1))
+    m.review_count = (m.review_count or 0) + 1
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+def confirm_review(db: Session, user_id: int, mistake_id: int) -> Mistake:
+    """确认本次复习已答对：推进间隔计划。
+
+    - 若还未到 next_review_at，返回未到期（不做状态变更，前端应拦截）；
+    - stage 递增，安排下一间隔；stage 达到上限且本次确认答对则 mastered=True。
+    """
+    m = get_mistake(db, user_id, mistake_id)
+    if m is None:
+        raise LookupError("错题不存在")
+    now = datetime.utcnow()
+    if m.next_review_at and now < m.next_review_at:
+        raise ValueError("NOT_DUE")  # 尚未到复习时间，不能提前确认
+    m.review_count = (m.review_count or 0) + 1
+    m.last_review_at = now
+    if m.review_stage >= _MAX_STAGE:
+        m.mastered = True
+        m.review_stage = _MAX_STAGE + 1  # 标记完成
+        m.next_review_at = None
+    else:
+        m.review_stage = (m.review_stage or 0) + 1
+        m.next_review_at = now + timedelta(days=_REVIEW_INTERVALS.get(m.review_stage, 7))
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+def advance_on_correct(db: Session, user_id: int, question: str, subject: str | None = None) -> list[int]:
+    """测验答对时，自动推进与之关联的错题复习进度（按题目文本匹配）。
+
+    返回被推进/掌握的错题 id 列表。匹配规则：题目文本包含同一道错题的 question。
+    """
+    if not question:
+        return []
+    q = question.strip()
+    stmt = select(Mistake).where(
+        Mistake.user_id == user_id,
+        Mistake.mastered.is_(False),
+        Mistake.review_stage > 0,
+    )
+    if subject:
+        stmt = stmt.where(Mistake.subject == subject)
+    candidates = list(db.scalars(stmt).all())
+    advanced: list[int] = []
+    for m in candidates:
+        if q and m.question and m.question.strip() and m.question.strip() in q:
+            try:
+                confirm_review(db, user_id, m.id)
+                advanced.append(m.id)
+            except ValueError:
+                # NOT_DUE：尚未到复习时间，仅记录复习次数
+                m.review_count = (m.review_count or 0) + 1
+                db.commit()
+    return advanced
 
 
 # ------------------------- AI 解析 -------------------------
