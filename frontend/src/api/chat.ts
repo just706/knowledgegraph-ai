@@ -12,11 +12,12 @@ export interface ChatResponse {
   session_title: string
   answer: string
   sources: ChatSource[]
-  // 生成模式：llm（AI 生成）/ local（本地模式）
-  mode: 'llm' | 'local'
+  // 生成模式：llm / local / agent / workflow:stats / workflow:quiz /
+  // workflow:plan / workflow:graph / rag:<style> 等
+  mode: string
 }
 
-export type ChatMode = 'normal' | 'beginner' | 'exam' | 'interview'
+export type ChatMode = 'normal' | 'beginner' | 'exam' | 'interview' | 'auto' | 'agent'
 
 export interface ChatSession {
   id: number
@@ -31,7 +32,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   sources: ChatSource[]
-  gen_mode: 'llm' | 'local' | null
+  gen_mode: string | null
   created_at: string
 }
 

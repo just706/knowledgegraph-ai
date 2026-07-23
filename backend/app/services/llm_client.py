@@ -344,3 +344,216 @@ def json_completion(
 
 # 兼容直接以 key 调用（如某些脚本），避免未使用导入告警
 _ = os.environ
+
+
+# ===========================================================================
+# 工具调用（Agent 能力）：让 LLM 在 ReAct 循环中调用现有业务工具
+# ===========================================================================
+@dataclass
+class ToolCallResult:
+    """工具调用统一返回结构：text 与 tool_calls 二选一。"""
+
+    text: str | None = None
+    tool_calls: list[dict] | None = None  # 每项：{"id", "name", "arguments": {}}
+
+
+def tool_call_completion(
+    user,
+    *,
+    system_prompt: str,
+    messages: list[dict],
+    tools: list[dict],
+    temperature: float = 0.3,
+    timeout: int = 60,
+) -> ToolCallResult:
+    """多厂商工具调用统一入口。
+
+    - openai_compatible：完整多轮工具循环。
+    - anthropic / gemini：单次工具调用，由编排层做单轮（执行后二次普通对话）。
+    无凭证抛 RuntimeError("NO_LLM_CREDENTIAL")，由编排层降级。
+    """
+    cred = resolve_credential(user)
+    if cred is None:
+        raise RuntimeError("NO_LLM_CREDENTIAL")
+    if cred.kind == "openai_compatible":
+        return _tool_openai(cred, system_prompt, messages, tools, temperature, timeout)
+    if cred.kind == "anthropic":
+        return _tool_anthropic(cred, system_prompt, messages, tools, temperature, timeout)
+    if cred.kind == "gemini":
+        return _tool_gemini(cred, system_prompt, messages, tools, temperature, timeout)
+    text = chat_completion(
+        user, system_prompt=system_prompt,
+        user_prompt=_last_user_text(messages), temperature=temperature, timeout=timeout,
+    )
+    return ToolCallResult(text=text)
+
+
+def _last_user_text(messages: list[dict]) -> str:
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            c = m.get("content")
+            if isinstance(c, str):
+                return c
+    return ""
+
+
+def _tool_openai(cred, system_prompt, messages, tools, temperature, timeout) -> ToolCallResult:
+    sys_msgs = [{"role": "system", "content": system_prompt}] if system_prompt else []
+    oa_msgs = sys_msgs + list(messages)
+    oa_tools = [
+        {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
+        for t in tools
+    ]
+    body = {
+        "model": cred.model,
+        "messages": oa_msgs,
+        "temperature": temperature,
+        "tools": oa_tools,
+        "tool_choice": "auto",
+    }
+    try:
+        resp = requests.post(
+            f"{cred.base_url.rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {cred.api_key}", "Content-Type": "application/json"},
+            json=body,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        msg = resp.json()["choices"][0]["message"]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM 工具调用失败：%s", exc)
+        raise
+    if msg.get("tool_calls"):
+        calls = []
+        for tc in msg["tool_calls"]:
+            if tc.get("type") != "function":
+                continue
+            try:
+                args = json.loads(tc["function"].get("arguments") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+            calls.append({"id": tc["id"], "name": tc["function"]["name"], "arguments": args})
+        return ToolCallResult(tool_calls=calls)
+    return ToolCallResult(text=(msg.get("content") or "").strip())
+
+
+def _tool_anthropic(cred, system_prompt, messages, tools, temperature, timeout) -> ToolCallResult:
+    anth_tools = [
+        {"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
+        for t in tools
+    ]
+    convo = _oa_to_anthropic_messages(messages)
+    body = {"model": cred.model, "max_tokens": 4096, "temperature": temperature, "messages": convo, "tools": anth_tools}
+    if system_prompt:
+        body["system"] = system_prompt
+    try:
+        resp = requests.post(
+            f"{cred.base_url.rstrip('/')}/v1/messages",
+            headers={"x-api-key": cred.api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+            json=body,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Anthropic 工具调用失败：%s", exc)
+        raise
+    blocks = data.get("content", [])
+    text_parts = [b.get("text", "") for b in blocks if b.get("type") == "text"]
+    tool_uses = [b for b in blocks if b.get("type") == "tool_use"]
+    if tool_uses:
+        calls = [{"id": b["id"], "name": b["name"], "arguments": b.get("input", {}) or {}} for b in tool_uses]
+        return ToolCallResult(tool_calls=calls)
+    return ToolCallResult(text="".join(text_parts).strip())
+
+
+def _tool_gemini(cred, system_prompt, messages, tools, temperature, timeout) -> ToolCallResult:
+    decls = [
+        {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}
+        for t in tools
+    ]
+    contents = _oa_to_gemini_contents(messages)
+    body: dict = {
+        "contents": contents,
+        "tools": [{"functionDeclarations": decls}],
+        "generationConfig": {"temperature": temperature},
+    }
+    if system_prompt:
+        body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+    url = f"{cred.base_url.rstrip('/')}/models/{cred.model}:generateContent"
+    try:
+        resp = requests.post(url, params={"key": cred.api_key}, json=body, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini 工具调用失败：%s", exc)
+        raise
+    parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+    calls = [p for p in parts if p.get("functionCall")]
+    if calls:
+        out = []
+        for p in calls:
+            fc = p["functionCall"]
+            out.append({"id": fc.get("name"), "name": fc["name"], "arguments": fc.get("args", {}) or {}})
+        return ToolCallResult(tool_calls=out)
+    text = "".join(p.get("text", "") for p in parts)
+    return ToolCallResult(text=text.strip())
+
+
+def _oa_to_anthropic_messages(messages: list[dict]) -> list[dict]:
+    """OpenAI 格式 messages → Anthropic messages。"""
+    out = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content")
+        if role == "system":
+            continue
+        if role == "user":
+            if isinstance(content, str):
+                out.append({"role": "user", "content": [{"type": "text", "text": content}]})
+            else:
+                out.append({"role": "user", "content": content})
+        elif role == "assistant":
+            blocks = []
+            if isinstance(content, str) and content:
+                blocks.append({"type": "text", "text": content})
+            for tc in m.get("tool_calls", []) or []:
+                fn = tc.get("function", {})
+                try:
+                    inp = json.loads(fn.get("arguments", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    inp = {}
+                blocks.append({"type": "tool_use", "id": tc.get("id"), "name": fn.get("name"), "input": inp})
+            if blocks:
+                out.append({"role": "assistant", "content": blocks})
+        elif role == "tool":
+            out.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": m.get("tool_call_id"), "content": str(content)}]})
+    return out
+
+
+def _oa_to_gemini_contents(messages: list[dict]) -> list[dict]:
+    """OpenAI 格式 messages → Gemini contents（单轮够用，tool 结果由编排层转普通对话）。"""
+    out = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content")
+        if role == "system":
+            continue
+        g_role = "user" if role in ("user", "tool") else "model"
+        if isinstance(content, str):
+            if content:
+                out.append({"role": g_role, "parts": [{"text": content}]})
+        elif role == "assistant":
+            parts = []
+            if content:
+                parts.append({"text": content})
+            for tc in m.get("tool_calls", []) or []:
+                fn = tc.get("function", {})
+                try:
+                    args = json.loads(fn.get("arguments", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+                parts.append({"functionCall": {"name": fn.get("name"), "args": args}})
+            if parts:
+                out.append({"role": "model", "parts": parts})
+    return out

@@ -16,7 +16,7 @@ from app.schemas.chat import (
     PaginatedChatSessions,
     PaginatedChatMessages,
 )
-from app.services.rag import answer as rag_answer
+from app.router import dispatch
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -137,14 +137,10 @@ def chat(payload: ChatRequest, db: DbSession, current_user: CurrentUser) -> Chat
     )
     db.add(user_msg)
 
-    result = rag_answer(
+    result = dispatch(
         db=db,
-        user_id=current_user.id,
-        query=payload.query,
-        top_k=payload.top_k or 5,
-        mode=payload.mode or "normal",
         user=current_user,
-        history=payload.history,
+        payload=payload,
     )
 
     # 持久化助手回答

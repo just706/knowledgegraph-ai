@@ -34,6 +34,26 @@ const MODE_OPTIONS: { label: string; value: ChatMode }[] = [
   { label: '面试', value: 'interview' },
 ]
 
+// 智能路由：开启时走规则 Router（Workflow 优先 + Agent 兜底）；关闭时走普通 RAG（解释模式生效）
+const smartRouting = ref(true)
+
+// 后端返回的新路由模式 -> 友好标签
+const MODE_META: Record<string, { label: string; cls: string }> = {
+  agent: { label: '智能体', cls: 'tag--agent' },
+  'workflow:stats': { label: '学习统计', cls: 'tag--workflow' },
+  'workflow:quiz': { label: '智能出题', cls: 'tag--workflow' },
+  'workflow:plan': { label: '学习计划', cls: 'tag--workflow' },
+  'workflow:graph': { label: '知识图谱', cls: 'tag--workflow' },
+}
+function modeMeta(mode?: string): { label: string; cls: string } | null {
+  if (!mode) return null
+  if (MODE_META[mode]) return MODE_META[mode]
+  if (mode.startsWith('rag:')) return { label: `RAG·${mode.slice(4)}`, cls: 'tag--explain' }
+  if (mode === 'llm') return { label: 'AI 生成', cls: 'tag--ai' }
+  if (mode === 'local') return { label: '本地模式', cls: 'tag--local' }
+  return { label: mode, cls: 'tag--explain' }
+}
+
 const SESSION_PAGE_SIZE = 20
 const MESSAGE_PAGE_SIZE = 50
 
@@ -183,12 +203,13 @@ async function send(text?: string) {
     const res = await askQuestion({
       query,
       top_k: 5,
-      mode: currentMode.value,
+      mode: smartRouting.value ? 'auto' : currentMode.value,
       session_id: currentSessionId.value,
     })
     assistantMsg.content = res.answer
     assistantMsg.sources = res.sources
     assistantMsg.genMode = res.mode
+    assistantMsg.mode = res.mode
     // 若本次自动创建了会话，记录 id 并更新侧栏标题
     if (currentSessionId.value == null && res.session_id) {
       currentSessionId.value = res.session_id
@@ -274,8 +295,10 @@ onMounted(async () => {
           <p class="subtitle">基于你上传的资料（RAG）：检索相关切片 → 生成答案，并附上引用来源。</p>
         </div>
         <div class="mode-switch">
+          <span class="mode-switch__label">智能路由</span>
+          <el-switch v-model="smartRouting" size="small" />
           <span class="mode-switch__label">解释模式</span>
-          <el-radio-group v-model="currentMode" size="small">
+          <el-radio-group v-model="currentMode" size="small" :disabled="smartRouting">
             <el-radio-button v-for="m in MODE_OPTIONS" :key="m.value" :value="m.value">
               {{ m.label }}
             </el-radio-button>
@@ -295,9 +318,10 @@ onMounted(async () => {
                   <span v-if="msg.genMode === 'llm'" class="tag tag--ai">AI 生成</span>
                   <span v-else-if="msg.genMode === 'local'" class="tag tag--local">本地模式</span>
                   <span
-                    v-if="msg.mode && msg.mode !== 'normal'"
-                    class="tag tag--explain"
-                  >{{ MODE_OPTIONS.find((m) => m.value === msg.mode)?.label }}模式</span>
+                    v-if="modeMeta(msg.mode)"
+                    class="tag"
+                    :class="modeMeta(msg.mode)!.cls"
+                  >{{ modeMeta(msg.mode)!.label }}</span>
                 </div>
                 <p class="msg-content">{{ msg.content }}</p>
               </template>
@@ -474,6 +498,14 @@ onMounted(async () => {
 .tag--explain {
   color: #409eff;
   background: #ecf3ff;
+}
+.tag--agent {
+  color: #7c3aed;
+  background: #f3e8ff;
+}
+.tag--workflow {
+  color: #0d9488;
+  background: #ccfbf1;
 }
 .subtitle {
   color: #888;

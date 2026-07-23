@@ -7,7 +7,7 @@ export interface ChatSource {
   score: number
 }
 
-export type ChatMode = 'normal' | 'beginner' | 'exam' | 'interview'
+export type ChatMode = 'normal' | 'beginner' | 'exam' | 'interview' | 'auto' | 'agent'
 
 export interface ChatSession {
   id: number
@@ -51,7 +51,7 @@ export function sendChat(payload: AskPayload): Promise<{
   session_title: string
   answer: string
   sources: ChatSource[]
-  mode: 'llm' | 'local'
+  mode: string
 }> {
   return request.post('/chat/', payload)
 }

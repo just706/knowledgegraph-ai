@@ -79,6 +79,7 @@
                 来源: {{ src.snippet.slice(0, 20) }}...
               </span>
             </div>
+            <div v-if="modeTagText(msg.gen_mode)" class="mode-tag">{{ modeTagText(msg.gen_mode) }}</div>
           </div>
         </div>
         <div v-if="sending && messages[messages.length - 1]?.role === 'user'" class="msg assistant">
@@ -89,6 +90,11 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="mode-bar">
+        <span class="mode-bar__label">智能路由（自动规划 / 出题 / 答疑）</span>
+        <van-switch v-model="smartRouting" size="18" />
       </div>
 
       <div class="input-bar">
@@ -122,6 +128,7 @@ const messages = ref<ChatMessage[]>([])
 const currentSessionId = ref<number | null>(null)
 const query = ref('')
 const sending = ref(false)
+const smartRouting = ref(true)
 const messagesEl = ref<HTMLElement | null>(null)
 const sessionReady = ref(false)
 const sessionError = ref(false)
@@ -180,6 +187,7 @@ async function send() {
   try {
     const res = await sendChat({
       query: q,
+      mode: smartRouting.value ? 'auto' : 'normal',
       session_id: currentSessionId.value || undefined,
       history: buildHistory(),
     })
@@ -197,6 +205,19 @@ async function deleteSession(id: number) {
   await apiDeleteSession(id)
   sessions.value = await listSessions()
   showToast('已删除')
+}
+
+// 后端返回模式 -> 移动端展示标签（仅展示智能体/工作流类）
+const SMART_LABELS: Record<string, string> = {
+  agent: '智能体',
+  'workflow:stats': '学习统计',
+  'workflow:quiz': '智能出题',
+  'workflow:plan': '学习计划',
+  'workflow:graph': '知识图谱',
+}
+function modeTagText(m?: string | null): string | null {
+  if (!m) return null
+  return SMART_LABELS[m] ?? null
 }
 
 // 组装最近 N 轮对话作为多轮上下文（最多 6 轮 = 12 条），剔除临时乐观消息
@@ -398,6 +419,27 @@ onMounted(() => {
 .input-bar {
   border-top: 1px solid var(--kg-border);
   background: var(--kg-card);
+}
+
+.mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--kg-border);
+  background: var(--kg-card);
+  font-size: 13px;
+  color: var(--kg-text-secondary);
+}
+.mode-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #0d9488;
+  background: #ccfbf1;
+  border-radius: 4px;
+  padding: 1px 8px;
 }
 </style>
 

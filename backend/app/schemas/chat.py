@@ -22,7 +22,9 @@ class Paginated(BaseModel, Generic[T]):
 class ChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=5, ge=1, le=20)
-    mode: str | None = Field(default="normal", pattern="^(normal|beginner|exam|interview)$")
+    # auto/None = 走规则路由（Workflow 优先，Agent 兜底）；agent = 强制 Agent；
+    # normal/beginner/exam/interview = 强制普通 RAG（指定生成风格）。
+    mode: str | None = Field(default=None, pattern="^(normal|beginner|exam|interview|agent|auto)$")
     # 可选会话 id：不传则自动新建会话，传则追加到该会话
     session_id: int | None = Field(default=None)
     # 多轮对话上下文：由前端按"最近 N 轮"组装为 {role, content} 列表，
